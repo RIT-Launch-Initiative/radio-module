@@ -1,0 +1,3 @@
+[submodule "launch-core"]
+	path = launch-core
+	url = git@github.com:RIT-Launch-Initiative/launch-core.git
