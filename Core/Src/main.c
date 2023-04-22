@@ -42,6 +42,7 @@
 I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi1;
+SPI_HandleTypeDef hspi2;
 
 UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart2;
@@ -57,6 +58,7 @@ static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_UART4_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -98,6 +100,7 @@ int main(void)
   MX_SPI1_Init();
   MX_UART4_Init();
   MX_USART2_UART_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -227,6 +230,44 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief UART4 Initialization Function
   * @param None
   * @retval None
@@ -302,19 +343,65 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(ETH_CS_GPIO_Port, ETH_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPS_RST_Pin|ETH_SPDLED_Pin|ADDR0_Pin|ADDR1_Pin
+                          |ADDR2_Pin|ETH_LINKLED_Pin|ETH_DUPLED_Pin|LED1_Pin
+                          |MEM_RST_Pin|MEM_CS_Pin|MEM_WP_Pin|RF_DIO0_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : ETH_CS_Pin */
-  GPIO_InitStruct.Pin = ETH_CS_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, ADDR3_Pin|ETH_CS_Pin|RF_CS_Pin|RF_RST_Pin
+                          |RF_DIO5_Pin|RF_DIO4_Pin|RF_DIO3_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, ETH_RST_Pin|ETH_ACTLED_Pin|LED2_Pin|RF_DIO2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(RF_DIO1_GPIO_Port, RF_DIO1_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : GPS_RST_Pin ETH_SPDLED_Pin ADDR0_Pin ADDR1_Pin
+                           ADDR2_Pin ETH_LINKLED_Pin ETH_DUPLED_Pin LED1_Pin
+                           MEM_RST_Pin MEM_CS_Pin MEM_WP_Pin RF_DIO0_Pin */
+  GPIO_InitStruct.Pin = GPS_RST_Pin|ETH_SPDLED_Pin|ADDR0_Pin|ADDR1_Pin
+                          |ADDR2_Pin|ETH_LINKLED_Pin|ETH_DUPLED_Pin|LED1_Pin
+                          |MEM_RST_Pin|MEM_CS_Pin|MEM_WP_Pin|RF_DIO0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(ETH_CS_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : ADDR3_Pin ETH_CS_Pin RF_CS_Pin RF_RST_Pin
+                           RF_DIO5_Pin RF_DIO4_Pin RF_DIO3_Pin */
+  GPIO_InitStruct.Pin = ADDR3_Pin|ETH_CS_Pin|RF_CS_Pin|RF_RST_Pin
+                          |RF_DIO5_Pin|RF_DIO4_Pin|RF_DIO3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : ETH_RST_Pin ETH_ACTLED_Pin LED2_Pin RF_DIO2_Pin */
+  GPIO_InitStruct.Pin = ETH_RST_Pin|ETH_ACTLED_Pin|LED2_Pin|RF_DIO2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : ETH_INT_Pin GPS_HBEAT_Pin GPS_INT_Pin */
+  GPIO_InitStruct.Pin = ETH_INT_Pin|GPS_HBEAT_Pin|GPS_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : RF_DIO1_Pin */
+  GPIO_InitStruct.Pin = RF_DIO1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(RF_DIO1_GPIO_Port, &GPIO_InitStruct);
 
 }
 
