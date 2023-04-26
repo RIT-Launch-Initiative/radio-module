@@ -21,6 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "device/platforms/stm32/HAL_GPIODevice.h"
+#include "device/platforms/stm32/HAL_UARTDevice.h"
+#include "device/platforms/stm32/HAL_SPIDevice.h"
+#include "device/peripherals/RFM95W/RFM95W.h"
 
 /* USER CODE END Includes */
 
@@ -48,11 +52,52 @@
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
+static RFM95W *rfm95w_tx = nullptr;
+static RFM95W *rfm95w_rx = nullptr;
+static HALUARTDevice *uartDev = nullptr;
+static HALSPIDevice *spi1 = nullptr;
+static HALSPIDevice *spi2 = nullptr;
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+RetType spi1DevPollTask(){
+	RESUME();
 
+	RESET();
+	return RET_SUCCESS;
+
+}
+
+RetType spi2DevPollTask(){
+	RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+
+}
+
+RetType rfmTxTask(){
+	RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+}
+
+RetType rfmRxTask(){
+	RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+}
+
+RetType radioInitTask(){
+	RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+}
 /* USER CODE END 0 */
 
 /**
@@ -173,3 +218,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
