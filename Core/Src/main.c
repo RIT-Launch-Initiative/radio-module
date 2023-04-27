@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "device/peripherals/LED/LED.h"
 #include "device/platforms/stm32/HAL_GPIODevice.h"
 #include "device/platforms/stm32/HAL_SPIDevice.h"
 #include "device/platforms/stm32/HAL_UARTDevice.h"
@@ -70,6 +71,7 @@ static void MX_SPI2_Init(void);
 static HALUARTDevice *uartDev = nullptr;
 static HALSPIDevice *spi1 = nullptr;
 static HALSPIDevice *spi2 = nullptr;
+static LED *led = nullptr;
 
 /* USER CODE END PFP */
 
@@ -109,6 +111,33 @@ RetType radioInitTask() {
     RESET();
     return RET_SUCCESS;
 }
+
+RetType ledTask(void *) {
+    RESUME();
+
+    CALL(led->toggle());
+
+    RESET();
+    return RET_SUCCESS;
+}
+
+RetType sensorInitTask(void *) {
+    RESUME();
+    CALL(uartDev->write((uint8_t *)"LED: Initializing...\r\n", 22));
+    RetType ret = CALL(led->init());
+    tid_t ledTID = -1;
+    if (ret != RET_ERROR) {
+        ledTID = sched_start(ledTask, {});
+
+        if (ledTID == -1)
+            CALL(uartDev->write((uint8_t *)"LED: Task Init Failed\r\n", 23));
+        else
+            CALL(uartDev->write((uint8_t *)"LED: Task Init Success\r\n", 24));
+    }
+    RESET();
+    return RET_SUCCESS;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -144,7 +173,12 @@ int main(void) {
     MX_USART2_UART_Init();
     MX_SPI2_Init();
     /* USER CODE BEGIN 2 */
+    HALGPIODevice gpioDevice("LED GPIO", GPIOA, GPIO_PIN_5);
+    RetType ret = gpioDevice.init();
+    LED localLED(gpioDevice);
+    led = &localLED;
 
+    sched_start(sensorInitTask, {});
     /* USER CODE END 2 */
 
     /* Infinite loop */
