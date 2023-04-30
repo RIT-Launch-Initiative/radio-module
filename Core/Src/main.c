@@ -21,8 +21,14 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
 #include <stdio.h>
 #include <string.h>
+
+#include "device/platforms/stm32/HAL_GPIODevice.h"
+#include "device/platforms/stm32/HAL_UARTDevice.h"
+#include "device/platforms/stm32/HAL_SPIDevice.h"
+#include "device/peripherals/RFM95W/RFM95W.h"
 
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
@@ -65,6 +71,12 @@ static HALSPIDevice *wizSPI = nullptr;
 static HALGPIODevice *wizCS = nullptr;
 static HALUARTDevice *uartDev = nullptr;
 
+static RFM95W *rfm95w_tx = nullptr;
+static RFM95W *rfm95w_rx = nullptr;
+static HALUARTDevice *uartDev = nullptr;
+
+static HALSPIDevice *spi2 = nullptr;
+
 static W5500 *w5500 = nullptr;
 static IPv4UDPStack *stack = nullptr;
 static IPv4UDPSocket *sock = nullptr;
@@ -86,10 +98,13 @@ static void MX_USART2_UART_Init(void);
 static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
+
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 RetType spiDevPollTask(void *) {
     RESUME();
     CALL(wizSPI->poll());
@@ -100,6 +115,33 @@ RetType spiDevPollTask(void *) {
 
 RetType netStackInitTask(void *) {
     RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+
+}
+
+RetType rfmTxTask(){
+	RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+}
+
+RetType rfmRxTask(){
+	RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+}
+
+RetType radioInitTask(){
+	RESUME();
+
+	RESET();
+	return RET_SUCCESS;
+}
+/* USER CODE END 0 */
 
     static W5500 wiznet(*wizSPI, *wizCS);
     w5500 = &wiznet;
@@ -530,3 +572,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
