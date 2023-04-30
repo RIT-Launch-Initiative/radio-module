@@ -90,11 +90,18 @@ static void MX_SPI2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+RetType spiDevPollTask(void *) {
+    RESUME();
+    CALL(wizSPI->poll());
+//    CALL(flashSPI->poll());
+    RESET();
+    return RET_SUCCESS;
+}
+
 RetType netStackInitTask(void *) {
     RESUME();
 
-    static W5500 wiznet(
-    *wizSPI, *wizCS);
+    static W5500 wiznet(*wizSPI, *wizCS);
     w5500 = &wiznet;
 
     static IPv4UDPStack iPv4UdpStack{10, 10, 10, 1, \
@@ -138,6 +145,27 @@ RetType netStackInitTask(void *) {
     RESET();
     return RET_ERROR; // Kill task
 }
+
+uint8_t read_chip_id() {
+    uint8_t chip_id;
+    uint8_t addr_select = (0x00000000 + (0x0039 << 8) + (0x00 << 3));
+    uint8_t data[3];
+    addr_select |= ((0x00 << 2)) | (0x00);
+
+    data[0] = (addr_select & 0x00FF0000) >> 16;
+    data[1] = (addr_select & 0x0000FF00) >> 8;
+    data[2] = (addr_select & 0x000000FF) >> 0;
+
+    HAL_GPIO_WritePin(ETH_CS_GPIO_Port, ETH_CS_Pin, GPIO_PIN_RESET);
+
+    HAL_SPI_Transmit(&hspi1, (uint8_t *) addr_select, 1, 100);
+    HAL_SPI_Receive(&hspi1, &chip_id, 1, 100);
+
+    HAL_GPIO_WritePin(ETH_CS_GPIO_Port, ETH_CS_Pin, GPIO_PIN_SET);
+
+    return chip_id;
+
+}
 /* USER CODE END 0 */
 
 /**
@@ -173,6 +201,12 @@ int main(void) {
     MX_USART2_UART_Init();
     MX_SPI2_Init();
     /* USER CODE BEGIN 2 */
+//    uint8_t chipID = read_chip_id();
+//    uint8_t buffer[100];
+//    snprintf((char *) buffer, 100, "Chip ID: %x\r\n", chipID);
+//    HAL_UART_Transmit(&huart4, buffer, strlen((char *) buffer), 1000);
+
+
     HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPS_INT_GPIO_Port, GPS_INT_Pin, GPIO_PIN_RESET);
 
@@ -181,13 +215,24 @@ int main(void) {
         return -1;
     }
 
+    HALUARTDevice uart("UART", &huart4);
+    RetType ret = uart.init();
+    if (ret != RET_SUCCESS) {
+        HAL_UART_Transmit_IT(&huart2, (uint8_t *) "Failed to init UART Device. Exiting.\n\r", 38);
+        return -1;
+    }
+    uartDev = &uart;
+
     static HALSPIDevice wizSpi("WIZNET SPI", &hspi1);
-    RetType ret = wizSpi.init();
+    ret = wizSpi.init();
     wizSPI = &wizSpi;
 
     HALGPIODevice wizChipSelect("Wiznet CS", ETH_CS_GPIO_Port, ETH_CS_Pin);
     ret = wizChipSelect.init();
     wizCS = &wizChipSelect;
+
+    sched_start(spiDevPollTask, {});
+    sched_start(netStackInitTask, {});
 
     /* USER CODE END 2 */
 
@@ -196,6 +241,7 @@ int main(void) {
     while (1) {
         /* USER CODE END WHILE */
         sched_dispatch();
+        HAL_UART_Transmit(&huart4, (uint8_t *) "Hello World\n\r", 13, 1000);
         HAL_Delay(500);
         /* USER CODE BEGIN 3 */
     }
