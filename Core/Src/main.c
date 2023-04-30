@@ -146,26 +146,6 @@ RetType netStackInitTask(void *) {
     return RET_ERROR; // Kill task
 }
 
-uint8_t read_chip_id() {
-    uint8_t chip_id;
-    uint8_t addr_select = (0x00000000 + (0x0039 << 8) + (0x00 << 3));
-    uint8_t data[3];
-    addr_select |= ((0x00 << 2)) | (0x00);
-
-    data[0] = (addr_select & 0x00FF0000) >> 16;
-    data[1] = (addr_select & 0x0000FF00) >> 8;
-    data[2] = (addr_select & 0x000000FF) >> 0;
-
-    HAL_GPIO_WritePin(ETH_CS_GPIO_Port, ETH_CS_Pin, GPIO_PIN_RESET);
-
-    HAL_SPI_Transmit(&hspi1, (uint8_t *) addr_select, 1, 100);
-    HAL_SPI_Receive(&hspi1, &chip_id, 1, 100);
-
-    HAL_GPIO_WritePin(ETH_CS_GPIO_Port, ETH_CS_Pin, GPIO_PIN_SET);
-
-    return chip_id;
-
-}
 /* USER CODE END 0 */
 
 /**
@@ -201,12 +181,6 @@ int main(void) {
     MX_USART2_UART_Init();
     MX_SPI2_Init();
     /* USER CODE BEGIN 2 */
-//    uint8_t chipID = read_chip_id();
-//    uint8_t buffer[100];
-//    snprintf((char *) buffer, 100, "Chip ID: %x\r\n", chipID);
-//    HAL_UART_Transmit(&huart4, buffer, strlen((char *) buffer), 1000);
-
-
     HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPS_INT_GPIO_Port, GPS_INT_Pin, GPIO_PIN_RESET);
 
