@@ -487,7 +487,8 @@ static void MX_GPIO_Init(void) {
                              | RF_DIO5_Pin | RF_DIO4_Pin | RF_DIO3_Pin, GPIO_PIN_RESET);
 
     /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(GPIOB, ETH_RST_Pin | ETH_ACTLED_Pin | LED2_Pin | RF_DIO2_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOB, ETH_ACTLED_Pin | LED2_Pin | RF_DIO2_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOB, ETH_RST_Pin, GPIO_PIN_SET);
 
     /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(RF_DIO1_GPIO_Port, RF_DIO1_Pin, GPIO_PIN_RESET);
