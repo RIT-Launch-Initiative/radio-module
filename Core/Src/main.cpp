@@ -112,6 +112,32 @@ RetType spiDevPollTask(void *) {
     return RET_SUCCESS;
 }
 
+RetType wizRcvTestTask(void *) {
+    RESUME();
+    static uint8_t buff[1000];
+    static size_t len;
+    static IPv4UDPSocket::addr_t addr;
+    addr.ip[0] = 10;
+    addr.ip[1] = 10;
+    addr.ip[2] = 10;
+    addr.ip[3] = 69;
+    addr.port = 8000;
+
+    RetType ret = CALL(sock->recv(buff, &len, &addr));
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "Failed to receive packet\r\n", 26));
+        goto wizRcvTestTaskDone;
+    }
+
+    CALL(uartDev->write((uint8_t *) "Received packet\r\n\t", 17));
+    CALL(uartDev->write(buff, len));
+    CALL(uartDev->write((uint8_t *) "\r\n", 2));
+
+    wizRcvTestTaskDone:
+    RESET();
+    return ret;
+}
+
 RetType netStackInitTask(void *) {
     RESUME();
 
@@ -152,9 +178,7 @@ RetType netStackInitTask(void *) {
         goto netStackInitDone;
     }
 
-    sched_start(netStackInitTask, {});
-
-
+    sched_start(wizRcvTestTask, {});
     netStackInitDone:
     RESET();
     return RET_ERROR; // Kill task
