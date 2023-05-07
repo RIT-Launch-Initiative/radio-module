@@ -28,7 +28,7 @@
 #include "device/platforms/stm32/HAL_GPIODevice.h"
 #include "device/platforms/stm32/HAL_UARTDevice.h"
 #include "device/platforms/stm32/HAL_SPIDevice.h"
-//#include "device/peripherals/RFM95W/RFM95W.h"
+#include "device/peripherals/RFM95W/RFM95W.h"
 
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
@@ -74,11 +74,15 @@ static HALUARTDevice *uartDev = nullptr;
 //static RFM95W *rfm95w_tx = nullptr;
 //static RFM95W *rfm95w_rx = nullptr;
 
-static HALSPIDevice *spi2 = nullptr;
 
 static W5500 *w5500 = nullptr;
 static IPv4UDPStack *stack = nullptr;
 static IPv4UDPSocket *sock = nullptr;
+
+static RFM95W *rfm95w = nullptr;
+static HALSPIDevice *rfm95wSPI = nullptr;
+static HALGPIODevice *rfm95wCS = nullptr;
+static HALGPIODevice *rfm95wNRST = nullptr;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -106,8 +110,9 @@ static void MX_SPI2_Init(void);
 
 RetType spiDevPollTask(void *) {
     RESUME();
-    CALL(wizSPI->poll());
+//    CALL(wizSPI->poll());
 //    CALL(flashSPI->poll());
+    CALL(rfm95wSPI->poll());
     RESET();
     return RET_SUCCESS;
 }
@@ -134,14 +139,14 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-    RESET();
+RESET();
     return ret;
 }
 
 RetType netStackInitTask(void *) {
     RESUME();
 
-	static W5500 wiznet(*wizSPI, *wizCS);
+    static W5500 wiznet(*wizSPI, *wizCS);
     w5500 = &wiznet;
 
     static IPv4UDPStack iPv4UdpStack{10, 10, 10, 1, \
@@ -180,29 +185,36 @@ RetType netStackInitTask(void *) {
 
     sched_start(wizRcvTestTask, {});
     netStackInitDone:
-    RESET();
+RESET();
     return RET_ERROR; // Kill task
 }
 
-RetType rfmTxTask(){
-	RESUME();
+RetType rfmTxTask() {
+    RESUME();
 
-	RESET();
-	return RET_SUCCESS;
+    RESET();
+    return RET_SUCCESS;
 }
 
-RetType rfmRxTask(){
-	RESUME();
+RetType rfmRxTask() {
+    RESUME();
 
-	RESET();
-	return RET_SUCCESS;
+    RESET();
+    return RET_SUCCESS;
 }
 
-RetType radioInitTask(){
-	RESUME();
+RetType deviceInitTask(void *) {
+    RESUME();
 
-	RESET();
-	return RET_SUCCESS;
+    static RFM95W rfm(rfm95wSPI, rfm95wCS, rfm95wNRST);
+    rfm95w = &rfm;
+    RetType ret = CALL(rfm95w->init());
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "RFM95W: Failed to initialize\r\n", 30));
+    }
+
+    RESET();
+    return RET_SUCCESS;
 }
 /* USER CODE END 0 */
 
@@ -266,8 +278,22 @@ int main(void) {
     ret = wizChipSelect.init();
     wizCS = &wizChipSelect;
 
+
+    static HALSPIDevice rfm95wSpi("RFM95W SPI", &hspi2);
+    ret = rfm95wSpi.init();
+    rfm95wSPI = &rfm95wSpi;
+
+    static HALGPIODevice rfm95wChipSelect("RFM95W CS", RF_CS_GPIO_Port, RF_CS_Pin);
+    ret = rfm95wChipSelect.init();
+    rfm95wCS = &rfm95wChipSelect;
+
+    static HALGPIODevice rfm95wReset("RFM95W NRST", RF_RST_GPIO_Port, RF_RST_Pin);
+    ret = rfm95wReset.init();
+    rfm95wNRST = &rfm95wReset;
+
     sched_start(spiDevPollTask, {});
     sched_start(netStackInitTask, {});
+    sched_start(deviceInitTask, {});
 
     /* USER CODE END 2 */
 
