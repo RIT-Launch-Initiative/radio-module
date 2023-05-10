@@ -28,19 +28,21 @@
 #include "device/platforms/stm32/HAL_GPIODevice.h"
 #include "device/platforms/stm32/HAL_UARTDevice.h"
 #include "device/platforms/stm32/HAL_SPIDevice.h"
+#include "device/platforms/stm32/HAL_I2CDevice.h"
+
 //#include "device/peripherals/RFM95W/RFM95W.h"
 
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
 
-#include "device/platforms/stm32/HAL_GPIODevice.h"
-#include "device/platforms/stm32/HAL_UARTDevice.h"
-#include "device/platforms/stm32/HAL_SPIDevice.h"
+
 
 #include "device/peripherals/W5500/W5500.h"
 
 #include "sched/macros.h"
+
+#include "device/peripherals/MAXM10S/MAXM10S.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -79,6 +81,13 @@ static HALSPIDevice *spi2 = nullptr;
 static W5500 *w5500 = nullptr;
 static IPv4UDPStack *stack = nullptr;
 static IPv4UDPSocket *sock = nullptr;
+
+static MAXM10S *max10ms = nullptr;
+static HALI2CDevice *max10i2c = nullptr;
+static HALUARTDevice *max10uart = nullptr;
+static HALGPIODevice *max10rst = nullptr;
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -134,14 +143,14 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-    RESET();
+RESET();
     return ret;
 }
 
 RetType netStackInitTask(void *) {
     RESUME();
 
-	static W5500 wiznet(*wizSPI, *wizCS);
+    static W5500 wiznet(*wizSPI, *wizCS);
     w5500 = &wiznet;
 
     static IPv4UDPStack iPv4UdpStack{10, 10, 10, 1, \
@@ -180,29 +189,58 @@ RetType netStackInitTask(void *) {
 
     sched_start(wizRcvTestTask, {});
     netStackInitDone:
-    RESET();
+RESET();
     return RET_ERROR; // Kill task
 }
 
-RetType rfmTxTask(){
-	RESUME();
+RetType rfmTxTask() {
+    RESUME();
 
-	RESET();
-	return RET_SUCCESS;
+    RESET();
+    return RET_SUCCESS;
 }
 
-RetType rfmRxTask(){
-	RESUME();
+RetType rfmRxTask() {
+    RESUME();
 
-	RESET();
-	return RET_SUCCESS;
+    RESET();
+    return RET_SUCCESS;
 }
 
-RetType radioInitTask(){
-	RESUME();
+RetType max10Task(void*) {
+    RESUME();
+    static uint8_t buff[574]; // Max size of a NMEA is 82 bytes. 82 * 7 = 574 bytes
+    static uint8_t len;
+    RetType ret = CALL(max10ms->read_uart(buff, 574));
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "MAX10: Failed to read\r\n", 23));
+    }
 
-	RESET();
-	return RET_SUCCESS;
+    CALL(uartDev->write((uint8_t *) "MAX10: ", 7));
+    CALL(uartDev->write(buff, len));
+    CALL(uartDev->write((uint8_t *) "\r\n", 2));
+
+    RESET();
+    return RET_SUCCESS;
+}
+
+RetType deviceInitTask(void*) {
+    RESUME();
+
+    static MAXM10S max10(*max10i2c, *max10uart, *max10rst);
+    max10ms = &max10;
+
+    RetType ret = CALL(max10ms->init());
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "MAX10: Failed to initialize\r\n", 29));
+        goto deviceInitDone;
+    } else {
+        sched_start(max10Task, {});
+    }
+
+    deviceInitDone:
+    RESET();
+    return RET_SUCCESS;
 }
 /* USER CODE END 0 */
 
@@ -258,7 +296,7 @@ int main(void) {
     }
     uartDev = &uart;
 
-    static HALSPIDevice wizSpi("WIZNET SPI", &hspi1);
+    HALSPIDevice wizSpi("WIZNET SPI", &hspi1);
     ret = wizSpi.init();
     wizSPI = &wizSpi;
 
@@ -266,8 +304,24 @@ int main(void) {
     ret = wizChipSelect.init();
     wizCS = &wizChipSelect;
 
+
+
+    HALI2CDevice max10i2cDev("MAX10S I2C", &hi2c1);
+    ret = max10i2cDev.init();
+    max10i2c = &max10i2cDev;
+
+    HALUARTDevice max10uartDev("MAX10S UART", &huart2);
+    ret = max10uartDev.init();
+    max10uart = &max10uartDev;
+
+    HALGPIODevice max10resetDev("MAX10S RESET", GPS_RST_GPIO_Port, GPS_RST_Pin);
+    ret = max10resetDev.init();
+    max10rst = &max10resetDev;
+
+
     sched_start(spiDevPollTask, {});
     sched_start(netStackInitTask, {});
+    sched_start(deviceInitTask, {});
 
     /* USER CODE END 2 */
 
