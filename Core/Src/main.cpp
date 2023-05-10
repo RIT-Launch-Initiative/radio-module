@@ -139,7 +139,7 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-RESET();
+    RESET();
     return ret;
 }
 
@@ -185,7 +185,7 @@ RetType netStackInitTask(void *) {
 
     sched_start(wizRcvTestTask, {});
     netStackInitDone:
-RESET();
+    RESET();
     return RET_ERROR; // Kill task
 }
 
