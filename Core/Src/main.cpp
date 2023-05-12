@@ -220,19 +220,17 @@ RetType rfmRxTask() {
 
 RetType max10Task(void*) {
     RESUME();
-    static size_t amtData = 0;
-    static uint8_t positional_data[36];
-
+    static uint8_t data[1000];
+    static size_t bytes_read = 0;
     CALL(ledOne->toggle());
 
-    static uint8_t data[100];
-    RetType ret = CALL(maxm10s->read_data_rand_access(data, &amtData));
+    RetType ret = CALL(maxm10s->read_data_rand_access(data, 1000, &bytes_read));
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *)"MAX: Error reading data\r\n", 26));
         goto max10TaskDone;
     }
 
-    CALL(uartDev->write(data, amtData));
+    CALL(uartDev->write(data, bytes_read));
 //    CALL(uartDev->write((uint8_t *)" bytes read.\r\n", 15));
 //    CALL(uartDev->write((uint8_t *)"====================\r\n", 23));
 //    CALL(uartDev->write((uint8_t *)"POS: printing data...\r\n", 24));
@@ -253,7 +251,6 @@ RetType deviceInitTask(void*) {
     RetType ret = CALL(maxm10s->init());
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "MAX10: Failed to initialize\r\n", 29));
-        goto deviceInitDone;
     } else {
         sched_start(max10Task, {});
     }
