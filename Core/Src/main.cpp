@@ -83,6 +83,7 @@ static HALSPIDevice *spi2 = nullptr;
 static W5500 *w5500 = nullptr;
 static IPv4UDPStack *stack = nullptr;
 static IPv4UDPSocket *sock = nullptr;
+tid_t receiveTask = -1;
 
 static MAXM10S *maxm10s = nullptr;
 static HALI2CDevice *max10i2c = nullptr;
@@ -194,7 +195,7 @@ RetType netStackInitTask(void *) {
         goto netStackInitDone;
     }
 
-    sched_start(wizRcvTestTask, {});
+    receiveTask = sched_start(wizRcvTestTask, {});
     netStackInitDone:
 RESET();
     return RET_ERROR; // Kill task
