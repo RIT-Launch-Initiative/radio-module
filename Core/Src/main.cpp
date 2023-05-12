@@ -117,20 +117,16 @@ static void MX_SPI2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-RetType spiDevPollTask(void *) {
+RetType pollTask(void *) {
     RESUME();
     CALL(wizSPI->poll());
+    CALL(max10i2c->poll());
+    CALL(uartDev->poll());
 //    CALL(flashSPI->poll());
     RESET();
     return RET_SUCCESS;
 }
 
-RetType i2cDevPollTask(void *) {
-    RESUME();
-    CALL(max10i2c->poll());
-    RESET();
-    return RET_SUCCESS;
-}
 
 RetType wizRcvTestTask(void *) {
     RESUME();
@@ -154,7 +150,7 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-RESET();
+    RESET();
     return ret;
 }
 
@@ -225,6 +221,7 @@ RetType maxm10sTask(void *) {
     static char *messages;
     static size_t bytes_read = 0;
     static nmea::GGA_DATA_T gga_data;
+    static uint8_t uart_buff[1000];
 
 
     CALL(ledOne->toggle());
@@ -241,8 +238,18 @@ RetType maxm10sTask(void *) {
         if (strstr(message, "GGA") != nullptr) {
             size_t len = strlen(message);
             nmea::parse_gga(message, &gga_data, len);
-
             // TODO: Any processing here
+
+            size_t len2 = snprintf((char *)uart_buff, 1000, "GPS Data:\r\n"
+                                                    "\tLatitude: %f\r\n"
+                                                    "\tLongitude: %f\r\n"
+                                                    "\tAltitude: %f\r\n"
+                                                    "\tSatellites: %d\r\n"
+                                                    "\tFix: %d\r\n"
+                                                    "\tSeconds since midnight: %f\r\n",
+                                   gga_data.latitude, gga_data.longitude, gga_data.alt, gga_data.num_sats,
+                                   gga_data.quality, gga_data.time);
+            CALL(uartDev->write(uart_buff, len2));
             break;
         }
     }
@@ -349,8 +356,7 @@ int main(void) {
     LED led1(led1GPIO, LED_ON);
     ledOne = &led1;
 
-    sched_start(spiDevPollTask, {});
-    sched_start(i2cDevPollTask, {});
+    sched_start(pollTask, {});
     sched_start(netStackInitTask, {});
     sched_start(deviceInitTask, {});
 
@@ -361,7 +367,6 @@ int main(void) {
     while (1) {
         /* USER CODE END WHILE */
         sched_dispatch();
-        HAL_Delay(5);
         /* USER CODE BEGIN 3 */
     }
     /* USER CODE END 3 */
