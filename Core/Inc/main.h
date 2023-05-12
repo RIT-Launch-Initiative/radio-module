@@ -89,6 +89,7 @@ void Error_Handler(void);
 #define ETH_RST_GPIO_Port GPIOB
 #define ETH_INT_Pin GPIO_PIN_1
 #define ETH_INT_GPIO_Port GPIOB
+#define ETH_INT_EXTI_IRQn EXTI1_IRQn
 #define ETH_ACTLED_Pin GPIO_PIN_10
 #define ETH_ACTLED_GPIO_Port GPIOB
 #define LED2_Pin GPIO_PIN_12
@@ -129,6 +130,7 @@ void Error_Handler(void);
 #define GPS_HBEAT_GPIO_Port GPIOB
 #define GPS_INT_Pin GPIO_PIN_9
 #define GPS_INT_GPIO_Port GPIOB
+#define GPS_INT_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
 

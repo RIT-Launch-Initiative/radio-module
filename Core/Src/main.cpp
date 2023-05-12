@@ -151,7 +151,7 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-    RESET();
+RESET();
     return ret;
 }
 
@@ -241,13 +241,13 @@ RetType maxm10sTask(void *) {
             nmea::parse_gga(message, &gga_data, len);
             // TODO: Any processing here
 
-            size_t len2 = snprintf((char *)uart_buff, 1000, "GPS Data:\r\n"
-                                                    "\tLatitude: %f\r\n"
-                                                    "\tLongitude: %f\r\n"
-                                                    "\tAltitude: %f\r\n"
-                                                    "\tSatellites: %d\r\n"
-                                                    "\tFix: %d\r\n"
-                                                    "\tSeconds since midnight: %f\r\n",
+            size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
+                                                             "\tLatitude: %f\r\n"
+                                                             "\tLongitude: %f\r\n"
+                                                             "\tAltitude: %f\r\n"
+                                                             "\tSatellites: %d\r\n"
+                                                             "\tFix: %d\r\n"
+                                                             "\tSeconds since midnight: %f\r\n",
                                    gga_data.latitude, gga_data.longitude, gga_data.alt, gga_data.num_sats,
                                    gga_data.quality, gga_data.time);
             CALL(uartDev->write(uart_buff, len2));
@@ -256,7 +256,7 @@ RetType maxm10sTask(void *) {
     }
 
     max10TaskDone:
-    RESET();
+RESET();
     return RET_SUCCESS;
 }
 
@@ -278,9 +278,6 @@ RetType deviceInitTask(void *) {
 RESET();
     return RET_SUCCESS;
 }
-/* USER CODE END 0 */
-
-
 /* USER CODE END 0 */
 
 /**
@@ -367,7 +364,7 @@ int main(void) {
     /* USER CODE BEGIN WHILE */
     while (1) {
         /* USER CODE END WHILE */
-        sched_dispatch();
+
         /* USER CODE BEGIN 3 */
     }
     /* USER CODE END 3 */
@@ -592,17 +589,25 @@ static void MX_GPIO_Init(void) {
     __HAL_RCC_GPIOD_CLK_ENABLE();
 
     /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(GPIOC, GPS_RST_Pin | ETH_SPDLED_Pin | ADDR0_Pin | ADDR1_Pin
-                             | ADDR2_Pin | ETH_LINKLED_Pin | ETH_DUPLED_Pin | LED1_Pin
-                             | MEM_RST_Pin | MEM_CS_Pin | MEM_WP_Pin | RF_DIO0_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOC, GPS_RST_Pin | MEM_RST_Pin, GPIO_PIN_SET);
 
     /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(GPIOA, ADDR3_Pin | ETH_CS_Pin | RF_CS_Pin | RF_RST_Pin
-                             | RF_DIO5_Pin | RF_DIO4_Pin | RF_DIO3_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOC, ETH_SPDLED_Pin | ADDR0_Pin | ADDR1_Pin | ADDR2_Pin
+                             | ETH_LINKLED_Pin | ETH_DUPLED_Pin | LED1_Pin | MEM_CS_Pin
+                             | MEM_WP_Pin | RF_DIO0_Pin, GPIO_PIN_RESET);
+
+    /*Configure GPIO pin Output Level */
+    HAL_GPIO_WritePin(GPIOA, ADDR3_Pin | ETH_CS_Pin | RF_CS_Pin | RF_DIO5_Pin
+                             | RF_DIO4_Pin | RF_DIO3_Pin, GPIO_PIN_RESET);
+
+    /*Configure GPIO pin Output Level */
+    HAL_GPIO_WritePin(ETH_RST_GPIO_Port, ETH_RST_Pin, GPIO_PIN_SET);
 
     /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(GPIOB, ETH_ACTLED_Pin | LED2_Pin | RF_DIO2_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOB, ETH_RST_Pin, GPIO_PIN_SET);
+
+    /*Configure GPIO pin Output Level */
+    HAL_GPIO_WritePin(RF_RST_GPIO_Port, RF_RST_Pin, GPIO_PIN_SET);
 
     /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(RF_DIO1_GPIO_Port, RF_DIO1_Pin, GPIO_PIN_RESET);
@@ -634,9 +639,9 @@ static void MX_GPIO_Init(void) {
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    /*Configure GPIO pins : ETH_INT_Pin GPS_HBEAT_Pin GPS_INT_Pin */
-    GPIO_InitStruct.Pin = ETH_INT_Pin | GPS_HBEAT_Pin | GPS_INT_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    /*Configure GPIO pins : ETH_INT_Pin GPS_INT_Pin */
+    GPIO_InitStruct.Pin = ETH_INT_Pin | GPS_INT_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
@@ -646,6 +651,19 @@ static void MX_GPIO_Init(void) {
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(RF_DIO1_GPIO_Port, &GPIO_InitStruct);
+
+    /*Configure GPIO pin : GPS_HBEAT_Pin */
+    GPIO_InitStruct.Pin = GPS_HBEAT_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPS_HBEAT_GPIO_Port, &GPIO_InitStruct);
+
+    /* EXTI interrupt init*/
+    HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
+    HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
@@ -682,4 +700,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
