@@ -39,12 +39,12 @@
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
 
 
-
 #include "device/peripherals/W5500/W5500.h"
 
 #include "sched/macros.h"
 
 #include "device/peripherals/MAXM10S/MAXM10S.h"
+#include "utils/nmea.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -154,7 +154,7 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-    RESET();
+RESET();
     return ret;
 }
 
@@ -218,31 +218,41 @@ RetType rfmRxTask() {
     return RET_SUCCESS;
 }
 
-RetType max10Task(void*) {
+// TODO: Maybe make some of the post processing more efficient in terms of speed and memory
+RetType maxm10sTask(void *) {
     RESUME();
     static uint8_t data[1000];
+    static char *messages;
     static size_t bytes_read = 0;
+    static nmea::GGA_DATA_T gga_data;
+
+
     CALL(ledOne->toggle());
 
     RetType ret = CALL(maxm10s->read_data_rand_access(data, 1000, &bytes_read));
     if (ret != RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *)"MAX: Error reading data\r\n", 26));
         goto max10TaskDone;
     }
 
     CALL(uartDev->write(data, bytes_read));
-//    CALL(uartDev->write((uint8_t *)" bytes read.\r\n", 15));
-//    CALL(uartDev->write((uint8_t *)"====================\r\n", 23));
-//    CALL(uartDev->write((uint8_t *)"POS: printing data...\r\n", 24));
-//    CALL(uartDev->write(positional_data, 36));
-//    CALL(uartDev->write((uint8_t *)"====================\r\n", 23));
+
+    messages = strtok(reinterpret_cast<char *>(data), "\r\n");
+    for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
+        if (strstr(message, "GGA") != nullptr) {
+            size_t len = strlen(message);
+            nmea::parse_gga(message, &gga_data, len);
+
+            // TODO: Any processing here
+            break;
+        }
+    }
 
     max10TaskDone:
     RESET();
     return RET_SUCCESS;
 }
 
-RetType deviceInitTask(void*) {
+RetType deviceInitTask(void *) {
     RESUME();
 
     static MAXM10S max10(*max10i2c, *max10uart, *max10rst);
@@ -252,13 +262,12 @@ RetType deviceInitTask(void*) {
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "MAX10: Failed to initialize\r\n", 29));
     } else {
-        sched_start(max10Task, {});
+        sched_start(maxm10sTask, {});
     }
 
     BLOCK();
-
     deviceInitDone:
-    RESET();
+RESET();
     return RET_SUCCESS;
 }
 /* USER CODE END 0 */
@@ -322,8 +331,6 @@ int main(void) {
     HALGPIODevice wizChipSelect("Wiznet CS", ETH_CS_GPIO_Port, ETH_CS_Pin);
     ret = wizChipSelect.init();
     wizCS = &wizChipSelect;
-
-
 
     HALI2CDevice max10i2cDev("MAX10S I2C", &hi2c1);
     ret = max10i2cDev.init();
