@@ -124,6 +124,7 @@ void wakeupGPS() {
 }
 
 void wakeupReceive() {
+    if (receiveTask == -1) return;
     WAKE(receiveTask);
 }
 
@@ -149,6 +150,7 @@ RetType wizRcvTestTask(void *) {
     addr.ip[3] = 69;
     addr.port = 8000;
 
+    CALL(uartDev->write((uint8_t *) "Receiving\r\n", 11));
     RetType ret = CALL(sock->recv(buff, &len, &addr));
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "Failed to receive packet\r\n", 26));
@@ -206,7 +208,7 @@ RetType netStackInitTask(void *) {
 
     receiveTask = sched_start(wizRcvTestTask, {});
     netStackInitDone:
-RESET();
+    RESET();
     return RET_ERROR; // Kill task
 }
 
@@ -266,7 +268,7 @@ RetType maxm10sTask(void *) {
     }
 
     max10TaskDone:
-RESET();
+    RESET();
     return RET_SUCCESS;
 }
 
