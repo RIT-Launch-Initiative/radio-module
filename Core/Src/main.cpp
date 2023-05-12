@@ -28,19 +28,23 @@
 #include "device/platforms/stm32/HAL_GPIODevice.h"
 #include "device/platforms/stm32/HAL_UARTDevice.h"
 #include "device/platforms/stm32/HAL_SPIDevice.h"
+#include "device/platforms/stm32/HAL_I2CDevice.h"
+#include "device/peripherals/LED/LED.h"
+
+
 //#include "device/peripherals/RFM95W/RFM95W.h"
 
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
 
-#include "device/platforms/stm32/HAL_GPIODevice.h"
-#include "device/platforms/stm32/HAL_UARTDevice.h"
-#include "device/platforms/stm32/HAL_SPIDevice.h"
 
 #include "device/peripherals/W5500/W5500.h"
 
 #include "sched/macros.h"
+
+#include "device/peripherals/MAXM10S/MAXM10S.h"
+#include "utils/nmea.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -79,6 +83,15 @@ static HALSPIDevice *spi2 = nullptr;
 static W5500 *w5500 = nullptr;
 static IPv4UDPStack *stack = nullptr;
 static IPv4UDPSocket *sock = nullptr;
+
+static MAXM10S *maxm10s = nullptr;
+static HALI2CDevice *max10i2c = nullptr;
+static HALUARTDevice *max10uart = nullptr;
+static HALGPIODevice *max10rst = nullptr;
+
+static LED *ledOne = nullptr;
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -112,6 +125,13 @@ RetType spiDevPollTask(void *) {
     return RET_SUCCESS;
 }
 
+RetType i2cDevPollTask(void *) {
+    RESUME();
+    CALL(max10i2c->poll());
+    RESET();
+    return RET_SUCCESS;
+}
+
 RetType wizRcvTestTask(void *) {
     RESUME();
     static uint8_t buff[1000];
@@ -134,14 +154,14 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-    RESET();
+RESET();
     return ret;
 }
 
 RetType netStackInitTask(void *) {
     RESUME();
 
-	static W5500 wiznet(*wizSPI, *wizCS);
+    static W5500 wiznet(*wizSPI, *wizCS);
     w5500 = &wiznet;
 
     static IPv4UDPStack iPv4UdpStack{10, 10, 10, 1, \
@@ -180,29 +200,75 @@ RetType netStackInitTask(void *) {
 
     sched_start(wizRcvTestTask, {});
     netStackInitDone:
-    RESET();
+RESET();
     return RET_ERROR; // Kill task
 }
 
-RetType rfmTxTask(){
-	RESUME();
+RetType rfmTxTask() {
+    RESUME();
 
-	RESET();
-	return RET_SUCCESS;
+    RESET();
+    return RET_SUCCESS;
 }
 
-RetType rfmRxTask(){
-	RESUME();
+RetType rfmRxTask() {
+    RESUME();
 
-	RESET();
-	return RET_SUCCESS;
+    RESET();
+    return RET_SUCCESS;
 }
 
-RetType radioInitTask(){
-	RESUME();
+// TODO: Maybe make some of the post processing more efficient in terms of speed and memory
+RetType maxm10sTask(void *) {
+    RESUME();
+    static uint8_t data[1000];
+    static char *messages;
+    static size_t bytes_read = 0;
+    static nmea::GGA_DATA_T gga_data;
 
-	RESET();
-	return RET_SUCCESS;
+
+    CALL(ledOne->toggle());
+
+    RetType ret = CALL(maxm10s->read_data_rand_access(data, 1000, &bytes_read));
+    if (ret != RET_SUCCESS) {
+        goto max10TaskDone;
+    }
+
+    CALL(uartDev->write(data, bytes_read));
+
+    messages = strtok(reinterpret_cast<char *>(data), "\r\n");
+    for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
+        if (strstr(message, "GGA") != nullptr) {
+            size_t len = strlen(message);
+            nmea::parse_gga(message, &gga_data, len);
+
+            // TODO: Any processing here
+            break;
+        }
+    }
+
+    max10TaskDone:
+    RESET();
+    return RET_SUCCESS;
+}
+
+RetType deviceInitTask(void *) {
+    RESUME();
+
+    static MAXM10S max10(*max10i2c, *max10uart, *max10rst);
+    maxm10s = &max10;
+
+    RetType ret = CALL(maxm10s->init());
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "MAX10: Failed to initialize\r\n", 29));
+    } else {
+        sched_start(maxm10sTask, {});
+    }
+
+    BLOCK();
+    deviceInitDone:
+RESET();
+    return RET_SUCCESS;
 }
 /* USER CODE END 0 */
 
@@ -258,7 +324,7 @@ int main(void) {
     }
     uartDev = &uart;
 
-    static HALSPIDevice wizSpi("WIZNET SPI", &hspi1);
+    HALSPIDevice wizSpi("WIZNET SPI", &hspi1);
     ret = wizSpi.init();
     wizSPI = &wizSpi;
 
@@ -266,8 +332,27 @@ int main(void) {
     ret = wizChipSelect.init();
     wizCS = &wizChipSelect;
 
+    HALI2CDevice max10i2cDev("MAX10S I2C", &hi2c1);
+    ret = max10i2cDev.init();
+    max10i2c = &max10i2cDev;
+
+    HALUARTDevice max10uartDev("MAX10S UART", &huart2);
+    ret = max10uartDev.init();
+    max10uart = &max10uartDev;
+
+    HALGPIODevice max10resetDev("MAX10S RESET", GPS_RST_GPIO_Port, GPS_RST_Pin);
+    ret = max10resetDev.init();
+    max10rst = &max10resetDev;
+
+    HALGPIODevice led1GPIO("LED 1", LED1_GPIO_Port, LED1_Pin);
+    ret = led1GPIO.init();
+    LED led1(led1GPIO, LED_ON);
+    ledOne = &led1;
+
     sched_start(spiDevPollTask, {});
+    sched_start(i2cDevPollTask, {});
     sched_start(netStackInitTask, {});
+    sched_start(deviceInitTask, {});
 
     /* USER CODE END 2 */
 
@@ -276,8 +361,7 @@ int main(void) {
     while (1) {
         /* USER CODE END WHILE */
         sched_dispatch();
-        HAL_UART_Transmit(&huart4, (uint8_t *) "Hello World\n\r", 13, 1000);
-        HAL_Delay(500);
+        HAL_Delay(5);
         /* USER CODE BEGIN 3 */
     }
     /* USER CODE END 3 */
@@ -471,7 +555,7 @@ static void MX_USART2_UART_Init(void) {
 
     /* USER CODE END USART2_Init 1 */
     huart2.Instance = USART2;
-    huart2.Init.BaudRate = 115200;
+    huart2.Init.BaudRate = 9600;
     huart2.Init.WordLength = UART_WORDLENGTH_8B;
     huart2.Init.StopBits = UART_STOPBITS_1;
     huart2.Init.Parity = UART_PARITY_NONE;
