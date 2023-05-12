@@ -51,7 +51,8 @@ extern "C" {
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
-
+void wakeupReceive();
+void wakeupGPS();
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */

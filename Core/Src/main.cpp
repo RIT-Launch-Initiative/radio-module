@@ -89,6 +89,7 @@ static MAXM10S *maxm10s = nullptr;
 static HALI2CDevice *max10i2c = nullptr;
 static HALUARTDevice *max10uart = nullptr;
 static HALGPIODevice *max10rst = nullptr;
+tid_t gpsTask = -1;
 
 static LED *ledOne = nullptr;
 
@@ -117,6 +118,14 @@ static void MX_SPI2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void wakeupGPS() {
+    WAKE(gpsTask);
+}
+
+void wakeupReceive() {
+    WAKE(receiveTask);
+}
 
 RetType pollTask(void *) {
     RESUME();
@@ -151,7 +160,7 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-RESET();
+    RESET();
     return ret;
 }
 
@@ -224,11 +233,12 @@ RetType maxm10sTask(void *) {
     static nmea::GGA_DATA_T gga_data;
     static uint8_t uart_buff[1000];
 
-
+    BLOCK();
     CALL(ledOne->toggle());
 
     RetType ret = CALL(maxm10s->read_data_rand_access(data, 1000, &bytes_read));
     if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "Failed to read data\r\n", 21));
         goto max10TaskDone;
     }
 
@@ -270,7 +280,7 @@ RetType deviceInitTask(void *) {
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "MAX10: Failed to initialize\r\n", 29));
     } else {
-        sched_start(maxm10sTask, {});
+        gpsTask = sched_start(maxm10sTask, {});
     }
 
     BLOCK();
