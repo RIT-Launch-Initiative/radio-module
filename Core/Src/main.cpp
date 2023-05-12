@@ -29,6 +29,8 @@
 #include "device/platforms/stm32/HAL_UARTDevice.h"
 #include "device/platforms/stm32/HAL_SPIDevice.h"
 #include "device/platforms/stm32/HAL_I2CDevice.h"
+#include "device/peripherals/LED/LED.h"
+
 
 //#include "device/peripherals/RFM95W/RFM95W.h"
 
@@ -82,10 +84,12 @@ static W5500 *w5500 = nullptr;
 static IPv4UDPStack *stack = nullptr;
 static IPv4UDPSocket *sock = nullptr;
 
-static MAXM10S *max10ms = nullptr;
+static MAXM10S *maxm10s = nullptr;
 static HALI2CDevice *max10i2c = nullptr;
 static HALUARTDevice *max10uart = nullptr;
 static HALGPIODevice *max10rst = nullptr;
+
+static LED *ledOne = nullptr;
 
 
 /* USER CODE END PV */
@@ -121,6 +125,13 @@ RetType spiDevPollTask(void *) {
     return RET_SUCCESS;
 }
 
+RetType i2cDevPollTask(void *) {
+    RESUME();
+    CALL(max10i2c->poll());
+    RESET();
+    return RET_SUCCESS;
+}
+
 RetType wizRcvTestTask(void *) {
     RESUME();
     static uint8_t buff[1000];
@@ -143,7 +154,7 @@ RetType wizRcvTestTask(void *) {
     CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
-RESET();
+    RESET();
     return ret;
 }
 
@@ -209,17 +220,26 @@ RetType rfmRxTask() {
 
 RetType max10Task(void*) {
     RESUME();
-    static uint8_t buff[574]; // Max size of a NMEA is 82 bytes. 82 * 7 = 574 bytes
-    static uint8_t len;
-    RetType ret = CALL(max10ms->read_uart(buff, 574));
+    static size_t amtData = 0;
+    static uint8_t positional_data[36];
+
+    CALL(ledOne->toggle());
+
+    static uint8_t data[100];
+    RetType ret = CALL(maxm10s->read_data_rand_access(data, &amtData));
     if (ret != RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "MAX10: Failed to read\r\n", 23));
+        CALL(uartDev->write((uint8_t *)"MAX: Error reading data\r\n", 26));
+        goto max10TaskDone;
     }
 
-    CALL(uartDev->write((uint8_t *) "MAX10: ", 7));
-    CALL(uartDev->write(buff, len));
-    CALL(uartDev->write((uint8_t *) "\r\n", 2));
+    CALL(uartDev->write(data, amtData));
+//    CALL(uartDev->write((uint8_t *)" bytes read.\r\n", 15));
+//    CALL(uartDev->write((uint8_t *)"====================\r\n", 23));
+//    CALL(uartDev->write((uint8_t *)"POS: printing data...\r\n", 24));
+//    CALL(uartDev->write(positional_data, 36));
+//    CALL(uartDev->write((uint8_t *)"====================\r\n", 23));
 
+    max10TaskDone:
     RESET();
     return RET_SUCCESS;
 }
@@ -228,15 +248,17 @@ RetType deviceInitTask(void*) {
     RESUME();
 
     static MAXM10S max10(*max10i2c, *max10uart, *max10rst);
-    max10ms = &max10;
+    maxm10s = &max10;
 
-    RetType ret = CALL(max10ms->init());
+    RetType ret = CALL(maxm10s->init());
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "MAX10: Failed to initialize\r\n", 29));
         goto deviceInitDone;
     } else {
         sched_start(max10Task, {});
     }
+
+    BLOCK();
 
     deviceInitDone:
     RESET();
@@ -318,8 +340,13 @@ int main(void) {
     ret = max10resetDev.init();
     max10rst = &max10resetDev;
 
+    HALGPIODevice led1GPIO("LED 1", LED1_GPIO_Port, LED1_Pin);
+    ret = led1GPIO.init();
+    LED led1(led1GPIO, LED_ON);
+    ledOne = &led1;
 
     sched_start(spiDevPollTask, {});
+    sched_start(i2cDevPollTask, {});
     sched_start(netStackInitTask, {});
     sched_start(deviceInitTask, {});
 
@@ -330,8 +357,7 @@ int main(void) {
     while (1) {
         /* USER CODE END WHILE */
         sched_dispatch();
-        HAL_UART_Transmit(&huart4, (uint8_t *) "Hello World\n\r", 13, 1000);
-        HAL_Delay(500);
+        HAL_Delay(5);
         /* USER CODE BEGIN 3 */
     }
     /* USER CODE END 3 */
@@ -525,7 +551,7 @@ static void MX_USART2_UART_Init(void) {
 
     /* USER CODE END USART2_Init 1 */
     huart2.Instance = USART2;
-    huart2.Init.BaudRate = 115200;
+    huart2.Init.BaudRate = 9600;
     huart2.Init.WordLength = UART_WORDLENGTH_8B;
     huart2.Init.StopBits = UART_STOPBITS_1;
     huart2.Init.Parity = UART_PARITY_NONE;
