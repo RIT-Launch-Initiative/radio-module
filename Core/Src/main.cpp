@@ -150,7 +150,7 @@ RetType wizPollRcv(void *) {
         snprintf((char *) buff, 1000, "Received packet with status %d\r\n", status);
         CALL(uartDev->write(buff, strlen((char *) buff)));
         status = 0;
-        ret = CALL(w5500->set_socket_interrupt_reg(DEFAULT_SOCKET_NUM, status));
+        ret = CALL(w5500->set_socket_interrupt_reg(DEFAULT_SOCKET_NUM, 0x00));
     }
 
     RESET();
