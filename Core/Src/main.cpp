@@ -147,8 +147,6 @@ RetType wizPollRcv(void *) {
 
     if ((status == W5500_Sn_IR_RECV) && (ret != RET_ERROR)) {
         wakeupReceive();
-        snprintf((char *) buff, 1000, "Received packet with status %d\r\n", status);
-        CALL(uartDev->write(buff, strlen((char *) buff)));
         status = 0;
         ret = CALL(w5500->set_socket_interrupt_reg(DEFAULT_SOCKET_NUM, 0x00));
     }
@@ -169,20 +167,19 @@ RetType wizRcvTestTask(void *) {
     addr.ip[3] = 69;
     addr.port = 8000;
 
-    CALL(uartDev->write((uint8_t *) "Receiving\r\n", 11));
     RetType ret = CALL(sock->recv(buff, &len, &addr));
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "Failed to receive packet\r\n", 26));
         goto wizRcvTestTaskDone;
     }
 
-//    CALL(uartDev->write((uint8_t *) "Received packet\r\n\t", 17));
+    CALL(uartDev->write((uint8_t *) "Received packet\r\n\t", 17));
 //    CALL(uartDev->write(buff, len));
 //    CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
     RESET();
-    return ret;
+    return RET_SUCCESS;
 }
 
 RetType netStackInitTask(void *) {
