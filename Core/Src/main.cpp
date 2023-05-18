@@ -40,11 +40,13 @@
 
 
 #include "device/peripherals/W5500/W5500.h"
+#include "device/peripherals/wiznet/wiznet.h"
 
 #include "sched/macros.h"
 
 #include "device/peripherals/MAXM10S/MAXM10S.h"
 #include "utils/nmea.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -123,9 +125,9 @@ void wakeupGPS() {
     WAKE(gpsTask);
 }
 
-void wakeupReceive() {
+void wakeupReceive() { // TODO: Unused for now
     if (receiveTask == -1) return;
-    WAKE(receiveTask);
+//    WAKE(receiveTask);
 }
 
 RetType pollTask(void *) {
@@ -137,6 +139,22 @@ RetType pollTask(void *) {
     RESET();
     return RET_SUCCESS;
 }
+
+RetType pollWiznet(void *) {
+    RESUME();
+    static NetworkLayer *net = stack->get_eth_layer();
+    static alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE> packet;
+
+    RetType ret = CALL(w5500->poll_recv(net, packet));
+    if (ret == RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "Received packet\r\n", 17));
+        WAKE(receiveTask);
+    }
+
+    RESET();
+    return ret;
+}
+
 
 RetType wizPollRcv(void *) {
     RESUME();
@@ -167,15 +185,16 @@ RetType wizRcvTestTask(void *) {
     addr.ip[3] = 69;
     addr.port = 8000;
 
+    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
     RetType ret = CALL(sock->recv(buff, &len, &addr));
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "Failed to receive packet\r\n", 26));
         goto wizRcvTestTaskDone;
     }
 
-    CALL(uartDev->write((uint8_t *) "Received packet\r\n\t", 17));
-//    CALL(uartDev->write(buff, len));
-//    CALL(uartDev->write((uint8_t *) "\r\n", 2));
+    CALL(uartDev->write((uint8_t *) "Processed packet\r\n\t", 20));
+    CALL(uartDev->write(buff, len));
+    CALL(uartDev->write((uint8_t *) "\r\n", 2));
 
     wizRcvTestTaskDone:
     RESET();
@@ -223,7 +242,7 @@ RetType netStackInitTask(void *) {
     }
 
     receiveTask = sched_start(wizRcvTestTask, {});
-    sched_start(wizPollRcv, {});
+    sched_start(pollWiznet, {});
     netStackInitDone:
     RESET();
     return RET_ERROR; // Kill task
