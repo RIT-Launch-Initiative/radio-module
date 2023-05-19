@@ -191,6 +191,36 @@ RetType netStackInitTask(void *) {
 
 RetType rfmTxTask() {
     RESUME();
+	CALL(uartDev->write((uint8_t *) "RFM95W: Transmit Test\r\n", 25));
+	
+	static uint8_t txbuf[] = "Hello from TX!\n\r";
+	static uint8_t rxbuf[50];
+	static uint8_t rxlen = sizeof(rxbuf);
+	static int status;
+	static uint8_t rssi;
+	
+	RetType ret = CALL(rfm95w->transmit((uint8_t*)txbuf, sizeof(txbuf)));
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "RFM95W: Failed to transmit data\r\n", 35));
+    }		
+	
+	CALL(rfm95w->packetWaiting(&status));
+	if(status == 1){
+		ret = CALL(rfm95w->receiveAsync((uint8_t*)rxbuf, rxlen));
+		if (ret != RET_SUCCESS) {
+			CALL(uartDev->write((uint8_t *) "RFM95W: Failed to receive acknowledgement\r\n", 45));
+		}			
+		// print out return message and rssi value
+		CALL(rfm95w->getRSSIVal(&rssi));
+		
+	}
+	else {
+		CALL(uartDev->write((uint8_t *) "RFM95W: No acknowledgement received yet.\r\n", 44));
+	}
+	
+	
+
+	
 
     RESET();
     return RET_SUCCESS;
@@ -198,6 +228,35 @@ RetType rfmTxTask() {
 
 RetType rfmRxTask() {
     RESUME();
+	
+	static uint8_t txbuf[] = "RX Acknowledged!\n\r";
+	static uint8_t rxbuf[50];
+	static uint8_t rxlen = sizeof(rxbuf);
+	static int status;
+	static uint8_t rssi;
+	
+	CALL(uartDev->write((uint8_t *) "RFM95W: Receive Test\r\n", 25));
+	
+	CALL(rfm95w->packetWaiting(&status));
+	if(status == 1){
+		RetType ret = CALL(rfm95w->receiveAsync((uint8_t*)rxbuf, rxlen));
+		if (ret != RET_SUCCESS) {
+			CALL(uartDev->write((uint8_t *) "RFM95W: Failed to receive message\r\n", 37));
+		}			
+		// print out return message and rssi value
+		CALL(rfm95w->getRSSIVal(&rssi));
+		
+	}
+	else {
+		CALL(uartDev->write((uint8_t *) "RFM95W: No message received yet.\r\n", 36));
+	}	
+
+	RetType ret = CALL(rfm95w->transmit((uint8_t*)txbuf, sizeof(txbuf)));
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "RFM95W: Failed to transmit data\r\n", 35));
+    }		
+
+	
 
     RESET();
     return RET_SUCCESS;
