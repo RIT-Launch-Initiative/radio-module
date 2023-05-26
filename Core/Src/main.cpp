@@ -189,7 +189,7 @@ RetType netStackInitTask(void *) {
     return RET_ERROR; // Kill task
 }
 
-RetType rfmTxTask() {
+RetType rfmTxTask(void *) {
     RESUME();
 	CALL(uartDev->write((uint8_t *) "RFM95W: Transmit Test\r\n", 25));
 	
@@ -226,7 +226,7 @@ RetType rfmTxTask() {
     return RET_SUCCESS;
 }
 
-RetType rfmRxTask() {
+RetType rfmRxTask(void *) {
     RESUME();
 	
 	static uint8_t txbuf[] = "RX Acknowledged!\n\r";
@@ -264,13 +264,29 @@ RetType rfmRxTask() {
 
 RetType deviceInitTask(void *) {
     RESUME();
-
     static RFM95W rfm(rfm95wSPI, rfm95wCS, rfm95wNRST);
     rfm95w = &rfm;
+	tid_t rfmTID = -1;
+	
+	CALL(uartDev->write((uint8_t *) "RFM95W: Initializing...\r\n", 27));
+	
     RetType ret = CALL(rfm95w->init());
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "RFM95W: Failed to initialize\r\n", 30));
+		//HAL_UART_Transmit_IT(&huart2, (uint8_t *) "RFM95W: Failed to initialize\r\n", 30);
     }
+	else{
+		rfmTID = 0; //sched_start(rfmTxTask, {});
+		if(-1 == rfmTID){
+			CALL(uartDev->write((uint8_t *) "RFM95W: Task Init Failed\r\n", 27));
+		}
+		else{
+			CALL(uartDev->write((uint8_t *) "RFM95W: Initialized Succesfully!\r\n", 36));
+		}
+	
+	}
+	
+	
 
     RESET();
     return RET_SUCCESS;
@@ -321,7 +337,7 @@ int main(void) {
         return -1;
     }
 
-    HALUARTDevice uart("UART", &huart4);
+    HALUARTDevice uart("UART", &huart2);
     RetType ret = uart.init();
     if (ret != RET_SUCCESS) {
         HAL_UART_Transmit_IT(&huart2, (uint8_t *) "Failed to init UART Device. Exiting.\n\r", 38);
@@ -351,13 +367,14 @@ int main(void) {
     rfm95wNRST = &rfm95wReset;
 
     sched_start(spiDevPollTask, {});
-    sched_start(netStackInitTask, {});
+    //sched_start(netStackInitTask, {});
     sched_start(deviceInitTask, {});
 
     /* USER CODE END 2 */
 
     /* Infinite loop */
     /* USER CODE BEGIN WHILE */
+	HAL_UART_Transmit_IT(&huart2, (uint8_t *) "RFM Test Code Start\n\r", 23);
     while (1) {
         /* USER CODE END WHILE */
         sched_dispatch();
