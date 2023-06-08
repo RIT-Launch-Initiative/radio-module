@@ -32,7 +32,7 @@
 #include "device/peripherals/LED/LED.h"
 
 
-//#include "device/peripherals/RFM95W/RFM95W.h"
+#include "device/peripherals/RFM9XW/RFM9XW.h"
 
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
@@ -77,8 +77,11 @@ static HALSPIDevice *wizSPI = nullptr;
 static HALGPIODevice *wizCS = nullptr;
 static HALUARTDevice *uartDev = nullptr;
 
-//static RFM95W *rfm95w_tx = nullptr;
-//static RFM95W *rfm95w_rx = nullptr;
+static RFM9XW *rfm95w = nullptr;
+static HALSPIDevice *rfmSPI = nullptr;
+static HALGPIODevice *rfmCS = nullptr;
+static HALGPIODevice *rfmRST = nullptr;
+
 
 static HALSPIDevice *spi2 = nullptr;
 
@@ -91,9 +94,11 @@ static MAXM10S *maxm10s = nullptr;
 static HALI2CDevice *max10i2c = nullptr;
 static HALUARTDevice *max10uart = nullptr;
 static HALGPIODevice *max10rst = nullptr;
+static HALGPIODevice *max10int = nullptr;
 tid_t gpsTask = -1;
 
 static LED *ledOne = nullptr;
+static LED *ledTwo = nullptr;
 
 
 /* USER CODE END PV */
@@ -135,6 +140,7 @@ RetType pollTask(void *) {
     CALL(wizSPI->poll());
     CALL(max10i2c->poll());
     CALL(uartDev->poll());
+    CALL(rfmSPI->poll());
 //    CALL(flashSPI->poll());
     RESET();
     return RET_SUCCESS;
@@ -262,6 +268,17 @@ RetType rfmRxTask() {
     return RET_SUCCESS;
 }
 
+RetType ledBlinkTask(void*) {
+    RESUME();
+
+    CALL(ledOne->toggle());
+    CALL(ledTwo->toggle());
+    SLEEP(100);
+
+    RESET();
+    return RET_SUCCESS;
+}
+
 // TODO: Maybe make some of the post processing more efficient in terms of speed and memory
 RetType maxm10sTask(void *) {
     RESUME();
@@ -311,7 +328,7 @@ RetType maxm10sTask(void *) {
 RetType deviceInitTask(void *) {
     RESUME();
 
-    static MAXM10S max10(*max10i2c, *max10uart, *max10rst);
+    static MAXM10S max10(*max10i2c, *max10uart, *max10rst, *max10int);
     maxm10s = &max10;
 
     RetType ret = CALL(maxm10s->init());
@@ -321,9 +338,23 @@ RetType deviceInitTask(void *) {
         gpsTask = sched_start(maxm10sTask, {});
     }
 
+    static RFM9XW rfm9x(*rfmSPI, *rfmCS, *rfmRST);
+    rfm95w = &rfm9x;
+
+    ret = CALL(rfm95w->init());
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "RFM9XW: Failed to initialize\r\n", 30));
+    } else {
+        CALL(uartDev->write((uint8_t *) "RFM9XW: Initialized\r\n", 21));
+    }
+
+    sched_start(ledBlinkTask, {});
+
+
+
     BLOCK();
     deviceInitDone:
-RESET();
+    RESET();
     return RET_SUCCESS;
 }
 /* USER CODE END 0 */
@@ -365,14 +396,14 @@ int main(void) {
     HAL_GPIO_WritePin(GPS_INT_GPIO_Port, GPS_INT_Pin, GPIO_PIN_RESET);
 
     if (!sched_init(&HAL_GetTick)) {
-        HAL_UART_Transmit_IT(&huart2, (uint8_t *) "Failed to init scheduler\n\r", 30);
+        HAL_UART_Transmit_IT(&huart4, (uint8_t *) "Failed to init scheduler\n\r", 30);
         return -1;
     }
 
     HALUARTDevice uart("UART", &huart4);
     RetType ret = uart.init();
     if (ret != RET_SUCCESS) {
-        HAL_UART_Transmit_IT(&huart2, (uint8_t *) "Failed to init UART Device. Exiting.\n\r", 38);
+        HAL_UART_Transmit_IT(&huart4, (uint8_t *) "Failed to init UART Device. Exiting.\n\r", 38);
         return -1;
     }
     uartDev = &uart;
@@ -397,13 +428,34 @@ int main(void) {
     ret = max10resetDev.init();
     max10rst = &max10resetDev;
 
+    HALGPIODevice max10intDev("MAX10S INT", GPS_INT_GPIO_Port, GPS_INT_Pin);
+    ret = max10intDev.init();
+    max10int = &max10intDev;
+
     HALGPIODevice led1GPIO("LED 1", LED1_GPIO_Port, LED1_Pin);
     ret = led1GPIO.init();
     LED led1(led1GPIO, LED_ON);
     ledOne = &led1;
 
+    HALGPIODevice led2GPIO("LED 2", LED2_GPIO_Port, LED2_Pin);
+    ret = led2GPIO.init();
+    LED led2(led2GPIO, LED_OFF);
+    ledTwo = &led2;
+
+    HALSPIDevice rfmSPIDev("RFM9X SPI", &hspi2);
+    ret = rfmSPIDev.init();
+    rfmSPI = &rfmSPIDev;
+
+    HALGPIODevice rfmCSDev("RFM9X CS", RF_CS_GPIO_Port, RF_CS_Pin);
+    ret = rfmCSDev.init();
+    rfmCS = &rfmCSDev;
+
+    HALGPIODevice rfmRSTDev("RFM9X RST", RF_RST_GPIO_Port, RF_RST_Pin);
+    ret = rfmRSTDev.init();
+    rfmRST = &rfmRSTDev;
+
     sched_start(pollTask, {});
-    sched_start(netStackInitTask, {});
+//    sched_start(netStackInitTask, {});
     sched_start(deviceInitTask, {});
 
     /* USER CODE END 2 */
@@ -576,7 +628,7 @@ static void MX_UART4_Init(void) {
 
     /* USER CODE END UART4_Init 1 */
     huart4.Instance = UART4;
-    huart4.Init.BaudRate = 9600;
+    huart4.Init.BaudRate = 115200;
     huart4.Init.WordLength = UART_WORDLENGTH_8B;
     huart4.Init.StopBits = UART_STOPBITS_1;
     huart4.Init.Parity = UART_PARITY_NONE;
