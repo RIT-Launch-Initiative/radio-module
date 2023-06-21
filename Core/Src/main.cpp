@@ -254,9 +254,15 @@ RetType netStackInitTask(void *) {
     return RET_ERROR; // Kill task
 }
 
-RetType rfmTxTask() {
+RetType rfmTxTask(void*) {
     RESUME();
 
+    RetType ret = CALL(rfm95w->send_data(reinterpret_cast<const uint8_t *>("Hello World!"), 12));
+    if (RET_SUCCESS != ret) {
+        CALL(uartDev->write((uint8_t *) "Failed to send data\r\n", 21));
+    }
+
+    SLEEP(1000);
     RESET();
     return RET_SUCCESS;
 }
@@ -349,8 +355,7 @@ RetType deviceInitTask(void *) {
     }
 
     sched_start(ledBlinkTask, {});
-
-
+    sched_start(rfmTxTask, {});
 
     BLOCK();
     deviceInitDone:
