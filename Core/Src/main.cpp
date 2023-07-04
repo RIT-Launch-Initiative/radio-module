@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "device/platforms/stm32/swdebug.h"
+
 #include "device/platforms/stm32/HAL_GPIODevice.h"
 #include "device/platforms/stm32/HAL_UARTDevice.h"
 #include "device/platforms/stm32/HAL_SPIDevice.h"
@@ -34,13 +36,10 @@
 
 //#include "device/peripherals/RFM95W/RFM95W.h"
 
+#include "device/peripherals/wiznet/wiznet.h"
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
-
-
-#include "device/peripherals/W5500/W5500.h"
-#include "device/peripherals/wiznet/wiznet.h"
 
 #include "sched/macros.h"
 
@@ -73,8 +72,6 @@ UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-static HALSPIDevice *wizSPI = nullptr;
-static HALGPIODevice *wizCS = nullptr;
 static HALUARTDevice *uartDev = nullptr;
 
 //static RFM95W *rfm95w_tx = nullptr;
@@ -82,15 +79,22 @@ static HALUARTDevice *uartDev = nullptr;
 
 static HALSPIDevice *spi2 = nullptr;
 
-static W5500 *w5500 = nullptr;
 static IPv4UDPStack *stack = nullptr;
 static IPv4UDPSocket *sock = nullptr;
+
+static Wiznet *w5500 = nullptr;
+static HALSPIDevice* wiz_spi = nullptr;
+static HALGPIODevice* wiz_cs = nullptr;
+static HALGPIODevice *wiz_rst = nullptr;
+static HALGPIODevice *wiz_led_gpio = nullptr;
+static LED *wiz_led = nullptr;
 tid_t receiveTask = -1;
 
 static MAXM10S *maxm10s = nullptr;
 static HALI2CDevice *max10i2c = nullptr;
 static HALUARTDevice *max10uart = nullptr;
 static HALGPIODevice *max10rst = nullptr;
+static HALGPIODevice *max10int = nullptr;
 tid_t gpsTask = -1;
 
 static LED *ledOne = nullptr;
@@ -132,7 +136,7 @@ void wakeupReceive() { // TODO: Unused for now
 
 RetType pollTask(void *) {
     RESUME();
-    CALL(wizSPI->poll());
+    CALL(wiz_spi->poll());
     CALL(max10i2c->poll());
     CALL(uartDev->poll());
 //    CALL(flashSPI->poll());
@@ -140,63 +144,37 @@ RetType pollTask(void *) {
     return RET_SUCCESS;
 }
 
-RetType pollWiznet(void *) {
+RetType wizRecvTestTask(void *) {
     RESUME();
-    static NetworkLayer *net = stack->get_eth_layer();
-    static alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE> packet;
+    static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
+    static uint8_t *buff;
 
-    RetType ret = CALL(w5500->poll_recv(net, packet));
-    if (ret == RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "Received packet\r\n", 17));
-        WAKE(receiveTask);
+    RetType ret = CALL(w5500->recv_data(stack->get_eth(), packet));
+    if (ret != RET_SUCCESS) {
+        CALL(uartDev->write((uint8_t *) "Failed to receive\r\n", 19));
+        RESET();
+        return ret;
     }
+    buff = packet.raw();
+
+    CALL(uartDev->write(buff, packet.size()));
 
     RESET();
-    return ret;
+    return RET_SUCCESS;
 }
 
-
-RetType wizPollRcv(void *) {
+RetType wizSendTestTask(void *) {
     RESUME();
-    static uint8_t status = 0;
-    static uint8_t buff[18];
-
-    RetType ret = CALL(w5500->get_socket_interrupt_reg(DEFAULT_SOCKET_NUM, &status));
-
-    if ((status == W5500_Sn_IR_RECV) && (ret != RET_ERROR)) {
-        wakeupReceive();
-        status = 0;
-        ret = CALL(w5500->set_socket_interrupt_reg(DEFAULT_SOCKET_NUM, 0x00));
-    }
-
-    RESET();
-    return ret;
-}
-
-
-RetType wizRcvTestTask(void *) {
-    RESUME();
-    static uint8_t buff[1000];
-    static size_t len;
     static IPv4UDPSocket::addr_t addr;
     addr.ip[0] = 10;
     addr.ip[1] = 10;
     addr.ip[2] = 10;
-    addr.ip[3] = 69;
+    addr.ip[3] = 96;
     addr.port = 8000;
 
-    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
-    RetType ret = CALL(sock->recv(buff, &len, &addr));
-    if (ret != RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "Failed to receive packet\r\n", 26));
-        goto wizRcvTestTaskDone;
-    }
+    static uint8_t buff[7] = {'L', 'a', 'u', 'n', 'c', 'h', '!'};
+    RetType ret = CALL(sock->send(buff, 7, &addr));
 
-    CALL(uartDev->write((uint8_t *) "Processed packet\r\n\t", 20));
-    CALL(uartDev->write(buff, len));
-    CALL(uartDev->write((uint8_t *) "\r\n", 2));
-
-    wizRcvTestTaskDone:
     RESET();
     return RET_SUCCESS;
 }
@@ -204,10 +182,10 @@ RetType wizRcvTestTask(void *) {
 RetType netStackInitTask(void *) {
     RESUME();
 
-    static W5500 wiznet(*wizSPI, *wizCS);
+    static Wiznet wiznet(*wiz_spi, *wiz_cs, *wiz_rst, *wiz_led);
     w5500 = &wiznet;
 
-    static IPv4UDPStack iPv4UdpStack{10, 10, 10, 1, \
+    static IPv4UDPStack iPv4UdpStack{10, 10, 10, 69, \
                               255, 255, 255, 0,
                                      *w5500};
     stack = &iPv4UdpStack;
@@ -228,25 +206,25 @@ RetType netStackInitTask(void *) {
     stack->add_multicast(temp_addr);
 
     CALL(uartDev->write((uint8_t *) "W5500: Initializing\r\n", 23));
-    RetType ret = CALL(wiznet.init(gateway_addr, subnet_mask, mac_addr, ip_addr));
+    RetType ret = CALL(wiznet.init(mac_addr));
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "W5500: Failed to initialize\r\n", 29));
         goto netStackInitDone;
     }
-
-    CALL(uartDev->write((uint8_t *) "W5500: Initialized\r\n", 20));
 
     if (RET_SUCCESS != stack->init()) {
         CALL(uartDev->write((uint8_t *) "Failed to initialize network stack\r\n", 35));
         goto netStackInitDone;
     }
 
-    receiveTask = sched_start(wizRcvTestTask, {});
-    sched_start(pollWiznet, {});
+    CALL(uartDev->write((uint8_t *) "Successfully initialized network interface\n\r", 44));
+    sched_start(wizRecvTestTask, {});
+
     netStackInitDone:
     RESET();
     return RET_ERROR; // Kill task
 }
+
 
 RetType rfmTxTask() {
     RESUME();
@@ -311,7 +289,7 @@ RetType maxm10sTask(void *) {
 RetType deviceInitTask(void *) {
     RESUME();
 
-    static MAXM10S max10(*max10i2c, *max10uart, *max10rst);
+    static MAXM10S max10(*max10i2c, *max10uart, *max10rst, *max10int);
     maxm10s = &max10;
 
     RetType ret = CALL(maxm10s->init());
@@ -377,14 +355,6 @@ int main(void) {
     }
     uartDev = &uart;
 
-    HALSPIDevice wizSpi("WIZNET SPI", &hspi1);
-    ret = wizSpi.init();
-    wizSPI = &wizSpi;
-
-    HALGPIODevice wizChipSelect("Wiznet CS", ETH_CS_GPIO_Port, ETH_CS_Pin);
-    ret = wizChipSelect.init();
-    wizCS = &wizChipSelect;
-
     HALI2CDevice max10i2cDev("MAX10S I2C", &hi2c1);
     ret = max10i2cDev.init();
     max10i2c = &max10i2cDev;
@@ -397,10 +367,25 @@ int main(void) {
     ret = max10resetDev.init();
     max10rst = &max10resetDev;
 
+    HALGPIODevice max10intDev("MAX10S INT", GPS_INT_GPIO_Port, GPS_INT_Pin);
+    ret = max10intDev.init();
+    max10int = &max10intDev;
+
     HALGPIODevice led1GPIO("LED 1", LED1_GPIO_Port, LED1_Pin);
     ret = led1GPIO.init();
     LED led1(led1GPIO, LED_ON);
     ledOne = &led1;
+
+    static HALSPIDevice wiz_spi_local("Wiznet SPI", &hspi1);
+    ret = wiz_spi_local.init();
+    if (RET_SUCCESS != ret) {
+        swprint("#RED#Failed to initialize Wiznet SPI");
+    } else {
+        wiz_spi = &wiz_spi_local;
+    }
+
+    static HALGPIODevice wiz_cs_local("Wiznet CS", ETH_CS_GPIO_Port, ETH_CS_Pin);
+    wiz_cs = &wiz_cs_local;
 
     sched_start(pollTask, {});
     sched_start(netStackInitTask, {});
