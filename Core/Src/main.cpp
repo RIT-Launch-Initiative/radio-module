@@ -91,6 +91,8 @@ static MAXM10S *maxm10s = nullptr;
 static HALI2CDevice *max10i2c = nullptr;
 static HALUARTDevice *max10uart = nullptr;
 static HALGPIODevice *max10rst = nullptr;
+static HALGPIODevice *max10int = nullptr;
+
 tid_t gpsTask = -1;
 
 static LED *ledOne = nullptr;
@@ -311,7 +313,7 @@ RetType maxm10sTask(void *) {
 RetType deviceInitTask(void *) {
     RESUME();
 
-    static MAXM10S max10(*max10i2c, *max10uart, *max10rst);
+    static MAXM10S max10(*max10i2c, *max10uart, *max10rst, *max10int);
     maxm10s = &max10;
 
     RetType ret = CALL(maxm10s->init());
@@ -396,6 +398,11 @@ int main(void) {
     HALGPIODevice max10resetDev("MAX10S RESET", GPS_RST_GPIO_Port, GPS_RST_Pin);
     ret = max10resetDev.init();
     max10rst = &max10resetDev;
+
+
+    HALGPIODevice max10intDev("MAX10S INTERRUPT", GPS_INT_GPIO_Port, GPS_INT_Pin);
+    ret = max10intDev.init();
+    max10int = &max10intDev;
 
     HALGPIODevice led1GPIO("LED 1", LED1_GPIO_Port, LED1_Pin);
     ret = led1GPIO.init();
