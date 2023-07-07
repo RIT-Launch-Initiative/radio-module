@@ -267,8 +267,13 @@ RetType rfmTxTask(void*) {
     return RET_SUCCESS;
 }
 
-RetType rfmRxTask() {
+RetType rfmRxTask(void *) {
     RESUME();
+
+    static uint8_t buff[100];
+    static size_t len;
+
+    RetType ret = CALL(rfm95w->recv_data(buff, &len, 0, 100));
 
     RESET();
     return RET_SUCCESS;
@@ -355,7 +360,8 @@ RetType deviceInitTask(void *) {
     }
 
     sched_start(ledBlinkTask, {});
-    sched_start(rfmTxTask, {});
+//    sched_start(rfmTxTask, {});
+    sched_start(rfmRxTask, {});
 
     BLOCK();
     deviceInitDone:
