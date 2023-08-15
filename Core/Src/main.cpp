@@ -173,20 +173,41 @@ RetType wizRcvTestTask(void *) {
     return RET_SUCCESS;
 }
 
-RetType netStackInitTask(void *) {
+RetType wizTransTestTask(void *) {
     RESUME();
 
-    static IPv4UDPStack iPv4UdpStack{10, 10, 10, 69, \
-                              255, 255, 255, 0,
-                                     *w5500};
-    stack = &iPv4UdpStack;
+    static IPv4UDPSocket::addr_t addr;
+    addr.ip[0] = 10;
+    addr.ip[1] = 10;
+    addr.ip[2] = 10;
+    addr.ip[3] = 96;
+    addr.port = 8000;
+
+    static uint8_t buff[7] = {'L', 'a', 'u', 'n', 'c', 'h', '!'};
+    RetType ret = CALL(sock->send(buff, 7, &addr));
+
+    RESET();
+    return RET_SUCCESS;
+}
+
+RetType netStackInitTask(void *) {
+    RESUME();
 
     static uint8_t ip_addr[4] = {192, 168, 1, 10};
     static uint8_t subnet_mask[4] = {255, 255, 255, 0};
     static uint8_t gateway_addr[4] = {192, 168, 1, 1};
     static uint8_t mac_addr[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     static IPv4UDPSocket::addr_t addr;
+
     static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
+
+
+    static Wiznet wiznet(*wiz_spi, *wiz_cs, *wiz_rst, *wiz_led_gpio, stack->get_eth(), packet);
+    w5500 = &wiznet;
+
+    static IPv4UDPStack iPv4UdpStack(10, 10, 10, 69, 255, 255, 255, 0, *w5500);
+    stack = &iPv4UdpStack;
+
 
 
     sock = stack->get_socket();
@@ -198,8 +219,7 @@ RetType netStackInitTask(void *) {
     ipv4::IPv4Address(10, 10, 10, 69, &temp_addr);
     stack->add_multicast(temp_addr);
 
-    static Wiznet wiznet(*wiz_spi, *wiz_cs, *wiz_rst, *wiz_led_gpio, stack->get_eth(), packet);
-    w5500 = &wiznet;
+
 
     CALL(uartDev->write((uint8_t *) "W5500: Initializing\r\n", 23));
     RetType ret = CALL(wiznet.init());
@@ -215,6 +235,7 @@ RetType netStackInitTask(void *) {
 
     CALL(uartDev->write((uint8_t *) "Successfully initialized network interface\n\r", 44));
     sched_start(wizRecvTestTask, {});
+    sched_start(wizTransTestTask, {});
 
     netStackInitDone:
     RESET();
@@ -386,15 +407,15 @@ int main(void) {
     }
     uartDev = &uart;
 
-    HALI2CDevice max10i2cDev("MAX10S I2C", &hi2c1);
+    HALI2CDevice max10i2cDev("MAXM10S I2C", &hi2c1);
     ret = max10i2cDev.init();
     max10i2c = &max10i2cDev;
 
-    HALUARTDevice max10uartDev("MAX10S UART", &huart2);
+    HALUARTDevice max10uartDev("MAXM10S UART", &huart2);
     ret = max10uartDev.init();
     max10uart = &max10uartDev;
 
-    HALGPIODevice max10resetDev("MAX10S RESET", GPS_RST_GPIO_Port, GPS_RST_Pin);
+    HALGPIODevice max10resetDev("MAXM10S RESET", GPS_RST_GPIO_Port, GPS_RST_Pin);
     ret = max10resetDev.init();
     max10rst = &max10resetDev;
 
