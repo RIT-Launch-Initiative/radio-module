@@ -39,7 +39,6 @@
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
 
 
-#include "device/peripherals/W5500/W5500.h"
 #include "device/peripherals/wiznet/wiznet.h"
 
 #include "sched/macros.h"
@@ -232,7 +231,6 @@ RetType rfmRxTask() {
     return RET_SUCCESS;
 }
 
-// TODO: Maybe make some of the post processing more efficient in terms of speed and memory
 RetType maxm10sTask(void *) {
     RESUME();
 
@@ -246,7 +244,6 @@ RetType maxm10sTask(void *) {
 
     RetType ret = CALL(maxm10s->read_data_rand_access(data, 1000, &bytes_read));
     if (RET_SUCCESS == ret) {
-//        CALL(uartDev->write(data, bytes_read));
 
         messages = strtok(reinterpret_cast<char *>(data), "\r\n");
         for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
