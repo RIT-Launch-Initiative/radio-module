@@ -149,8 +149,8 @@ RetType pollWiznet(void *) {
 
     RetType ret = CALL(w5500->poll_recv(net, packet));
     if (ret == RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "Received packet\r\n", 17));
-        WAKE(receiveTask);
+//        CALL(uartDev->write((uint8_t *) "Received packet\r\n", 17));
+//        WAKE(receiveTask);
     }
 
     RESET();
@@ -187,10 +187,10 @@ RetType wizRcvTestTask(void *) {
     addr.ip[3] = 69;
     addr.port = 8000;
 
-    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
+//    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
     RetType ret = CALL(sock->recv(buff, &len, &addr));
     if (ret != RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "Failed to receive packet\r\n", 26));
+//        CALL(uartDev->write((uint8_t *) "Failed to receive packet\r\n", 26));
         goto wizRcvTestTaskDone;
     }
 
@@ -267,6 +267,7 @@ RetType rfmRxTask() {
 // TODO: Maybe make some of the post processing more efficient in terms of speed and memory
 RetType maxm10sTask(void *) {
     RESUME();
+
     static uint8_t data[1000];
     static char *messages;
     static size_t bytes_read = 0;
@@ -336,6 +337,44 @@ RESET();
   */
 int main(void) {
     /* USER CODE BEGIN 1 */
+    constexpr auto launch_name_text = "\t ________  ___  _________        ___       ________  ___  ___  ________   ________  ___  ___\r\n"
+                                                "\t|\\   __  \\|\\  \\|\\___   ___\\     |\\  \\     |\\   __  \\|\\  \\|\\  \\|\\   ___  \\|\\   ____\\|\\  \\|\\  \\\r\n"
+                                                "\t\\ \\  \\|\\  \\ \\  \\|___ \\  \\_|     \\ \\  \\    \\ \\  \\|\\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\___|\\ \\  \\\\\\  \\\r\n"
+                                                "\t \\ \\   _  _\\ \\  \\   \\ \\  \\       \\ \\  \\    \\ \\   __  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\    \\ \\   __  \\\r\n"
+                                                "\t  \\ \\  \\\\  \\\\ \\  \\   \\ \\  \\       \\ \\  \\____\\ \\  \\ \\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\____\\ \\  \\ \\  \\\r\n"
+                                                "\t   \\ \\__\\\\ _\\\\ \\__\\   \\ \\__\\       \\ \\_______\\ \\__\\ \\__\\ \\_______\\ \\__\\\\ \\__\\ \\_______\\ \\__\\ \\__\\\r\n"
+                                                "\t    \\|__|\\|__|\\|__|    \\|__|        \\|_______|\\|__|\\|__|\\|_______|\\|__| \\|__|\\|_______|\\|__|\\|__|\r\n";
+
+    constexpr int launch_name_len = []() constexpr {
+        const char *ptr = launch_name_text;
+        while (*ptr) ++ptr;
+        return ptr - launch_name_text;
+    }();
+
+    constexpr auto radio_module_text = " ________  ________  ________  ___  ________          _____ ______   ________  ________  ___  ___  ___       _______\r\n"
+                                                "|\\   __  \\|\\   __  \\|\\   ___ \\|\\  \\|\\   __  \\        |\\   _ \\  _   \\|\\   __  \\|\\   ___ \\|\\  \\|\\  \\|\\  \\     |\\  ___ \\\r\n"
+                                                "\\ \\  \\|\\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\ \\  \\|\\  \\       \\ \\  \\\\\\__\\ \\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\   __/|\r\n"
+                                                " \\ \\   _  _\\ \\   __  \\ \\  \\ \\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\\\|__| \\  \\ \\  \\\\\\  \\ \\  \\ \\\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\  \\_|/__\r\n"
+                                                "  \\ \\  \\\\  \\\\ \\  \\ \\  \\ \\  \\_\\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\    \\ \\  \\ \\  \\\\\\  \\ \\  \\_\\\\ \\ \\  \\\\\\  \\ \\  \\____\\ \\  \\_|\\ \\\r\n"
+                                                "   \\ \\__\\\\ _\\\\ \\__\\ \\__\\ \\_______\\ \\__\\ \\_______\\       \\ \\__\\    \\ \\__\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\\r\n"
+                                                "    \\|__|\\|__|\\|__|\\|__|\\|_______|\\|__|\\|_______|        \\|__|     \\|__|\\|_______|\\|_______|\\|_______|\\|_______|\\|_______|\r\n";
+
+    constexpr int radio_module_len = []() constexpr {
+        const char *ptr = radio_module_text;
+        while (*ptr) ++ptr;
+        return ptr - radio_module_text;
+    }();
+
+    constexpr auto line_text = " ____________  ____________  ____________  ____________  ____________  ____________  ____________  ____________  ____________\r\n"
+                                            "|\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\r\n"
+                                            "\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________|\r\n";
+
+    constexpr int line_text_len = []() constexpr {
+        const char *ptr = line_text;
+        while (*ptr) ++ptr;
+        return ptr - line_text;
+    }();
+
 
     /* USER CODE END 1 */
 
@@ -363,6 +402,11 @@ int main(void) {
     MX_USART2_UART_Init();
     MX_SPI2_Init();
     /* USER CODE BEGIN 2 */
+    HAL_UART_Transmit(&huart4, (uint8_t *) launch_name_text, launch_name_len, 1000);
+    HAL_UART_Transmit(&huart4, (uint8_t *) radio_module_text, radio_module_len, 1000);
+    HAL_UART_Transmit(&huart4, (uint8_t *) line_text, line_text_len, 1000);
+
+
     HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPS_INT_GPIO_Port, GPS_INT_Pin, GPIO_PIN_RESET);
 
@@ -583,7 +627,7 @@ static void MX_UART4_Init(void) {
 
     /* USER CODE END UART4_Init 1 */
     huart4.Instance = UART4;
-    huart4.Init.BaudRate = 9600;
+    huart4.Init.BaudRate = 115200;
     huart4.Init.WordLength = UART_WORDLENGTH_8B;
     huart4.Init.StopBits = UART_STOPBITS_1;
     huart4.Init.Parity = UART_PARITY_NONE;
