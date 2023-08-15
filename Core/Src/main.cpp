@@ -45,7 +45,7 @@
 #include "sched/macros.h"
 
 #include "device/peripherals/MAXM10S/MAXM10S.h"
-#include "utils/nmea.h"
+#include "common/utils/nmea.h"
 
 /* USER CODE END Includes */
 
@@ -239,7 +239,7 @@ RetType maxm10sTask(void *) {
     static uint8_t data[1000];
     static char *messages;
     static size_t bytes_read = 0;
-    static nmea::GGA_DATA_T gga_data;
+    static GPSData gps_data;
     static uint8_t uart_buff[1000];
 
     CALL(ledOne->toggle());
@@ -252,7 +252,7 @@ RetType maxm10sTask(void *) {
         for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
             if (strstr(message, "GGA") != nullptr) {
                 size_t len = strlen(message);
-                nmea::parse_gga(message, &gga_data, len);
+                nmea::parse_gga(message, &gps_data, len);
                 // TODO: Any processing here
 
                 size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
@@ -262,8 +262,8 @@ RetType maxm10sTask(void *) {
                                                                  "\tSatellites: %d\r\n"
                                                                  "\tFix: %d\r\n"
                                                                  "\tSeconds since midnight: %f\r\n",
-                                       gga_data.latitude, gga_data.longitude, gga_data.alt, gga_data.num_sats,
-                                       gga_data.quality, gga_data.time);
+                                       gps_data.latitude, gps_data.longitude, gps_data.alt, gps_data.num_sats,
+                                       gps_data.quality, gps_data.time);
                 CALL(uartDev->write(uart_buff, len2));
                 break;
             }
