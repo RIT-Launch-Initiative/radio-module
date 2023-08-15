@@ -123,15 +123,6 @@ static void MX_SPI2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-void wakeupGPS() {
-    WAKE(gpsTask);
-}
-
-void wakeupReceive() { // TODO: Unused for now
-    if (receiveTask == -1) return;
-//    WAKE(receiveTask);
-}
-
 RetType pollTask(void *) {
     RESUME();
     CALL(wizSPI->poll());
@@ -148,33 +139,10 @@ RetType pollWiznet(void *) {
     static alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE> packet;
 
     RetType ret = CALL(w5500->poll_recv(net, packet));
-    if (ret == RET_SUCCESS) {
-//        CALL(uartDev->write((uint8_t *) "Received packet\r\n", 17));
-//        WAKE(receiveTask);
-    }
 
     RESET();
     return ret;
 }
-
-
-RetType wizPollRcv(void *) {
-    RESUME();
-    static uint8_t status = 0;
-    static uint8_t buff[18];
-
-    RetType ret = CALL(w5500->get_socket_interrupt_reg(DEFAULT_SOCKET_NUM, &status));
-
-    if ((status == W5500_Sn_IR_RECV) && (ret != RET_ERROR)) {
-        wakeupReceive();
-        status = 0;
-        ret = CALL(w5500->set_socket_interrupt_reg(DEFAULT_SOCKET_NUM, 0x00));
-    }
-
-    RESET();
-    return ret;
-}
-
 
 RetType wizRcvTestTask(void *) {
     RESUME();
@@ -274,39 +242,34 @@ RetType maxm10sTask(void *) {
     static nmea::GGA_DATA_T gga_data;
     static uint8_t uart_buff[1000];
 
-    BLOCK();
     CALL(ledOne->toggle());
 
     RetType ret = CALL(maxm10s->read_data_rand_access(data, 1000, &bytes_read));
-    if (ret != RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "Failed to read data\r\n", 21));
-        goto max10TaskDone;
-    }
+    if (RET_SUCCESS == ret) {
+//        CALL(uartDev->write(data, bytes_read));
 
-    CALL(uartDev->write(data, bytes_read));
+        messages = strtok(reinterpret_cast<char *>(data), "\r\n");
+        for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
+            if (strstr(message, "GGA") != nullptr) {
+                size_t len = strlen(message);
+                nmea::parse_gga(message, &gga_data, len);
+                // TODO: Any processing here
 
-    messages = strtok(reinterpret_cast<char *>(data), "\r\n");
-    for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
-        if (strstr(message, "GGA") != nullptr) {
-            size_t len = strlen(message);
-            nmea::parse_gga(message, &gga_data, len);
-            // TODO: Any processing here
-
-            size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
-                                                             "\tLatitude: %f\r\n"
-                                                             "\tLongitude: %f\r\n"
-                                                             "\tAltitude: %f\r\n"
-                                                             "\tSatellites: %d\r\n"
-                                                             "\tFix: %d\r\n"
-                                                             "\tSeconds since midnight: %f\r\n",
-                                   gga_data.latitude, gga_data.longitude, gga_data.alt, gga_data.num_sats,
-                                   gga_data.quality, gga_data.time);
-            CALL(uartDev->write(uart_buff, len2));
-            break;
+                size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
+                                                                 "\tLatitude: %f\r\n"
+                                                                 "\tLongitude: %f\r\n"
+                                                                 "\tAltitude: %f\r\n"
+                                                                 "\tSatellites: %d\r\n"
+                                                                 "\tFix: %d\r\n"
+                                                                 "\tSeconds since midnight: %f\r\n",
+                                       gga_data.latitude, gga_data.longitude, gga_data.alt, gga_data.num_sats,
+                                       gga_data.quality, gga_data.time);
+                CALL(uartDev->write(uart_buff, len2));
+                break;
+            }
         }
     }
 
-    max10TaskDone:
     RESET();
     return RET_SUCCESS;
 }
@@ -324,10 +287,8 @@ RetType deviceInitTask(void *) {
         gpsTask = sched_start(maxm10sTask, {});
     }
 
-    BLOCK();
-    deviceInitDone:
-RESET();
-    return RET_SUCCESS;
+    RESET();
+    return RET_ERROR;
 }
 /* USER CODE END 0 */
 
