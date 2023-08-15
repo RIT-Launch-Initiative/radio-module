@@ -41,10 +41,11 @@
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
 
-#include "sched/macros.h"
+#include "device/peripherals/wiznet/wiznet.h"
 
+#include "sched/macros.h"
 #include "device/peripherals/MAXM10S/MAXM10S.h"
-#include "utils/nmea.h"
+#include "common/utils/nmea.h"
 
 /* USER CODE END Includes */
 
@@ -95,8 +96,6 @@ static HALI2CDevice *max10i2c = nullptr;
 static HALUARTDevice *max10uart = nullptr;
 static HALGPIODevice *max10rst = nullptr;
 static HALGPIODevice *max10int = nullptr;
-tid_t gpsTask = -1;
-
 static LED *ledOne = nullptr;
 
 
@@ -125,15 +124,6 @@ static void MX_SPI2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-void wakeupGPS() {
-    WAKE(gpsTask);
-}
-
-void wakeupReceive() { // TODO: Unused for now
-    if (receiveTask == -1) return;
-//    WAKE(receiveTask);
-}
-
 RetType pollTask(void *) {
     RESUME();
     CALL(wiz_spi->poll());
@@ -146,25 +136,28 @@ RetType pollTask(void *) {
 
 RetType wizRecvTestTask(void *) {
     RESUME();
-    static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
     static uint8_t *buff;
 
-    RetType ret = CALL(w5500->recv_data(stack->get_eth(), packet));
-    if (ret != RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "Failed to receive\r\n", 19));
-        RESET();
-        return ret;
-    }
-    buff = packet.raw();
-
-    CALL(uartDev->write(buff, packet.size()));
+//    RetType ret = CALL(w5500->recv_data(stack->get_eth(), packet));
+//    if (ret != RET_SUCCESS) {
+//        CALL(uartDev->write((uint8_t *) "Failed to receive\r\n", 19));
+//        RESET();
+//        return ret;
+//    }
+//    buff = packet.raw();
+//
+//    CALL(uartDev->write(buff, packet.size()));
 
     RESET();
     return RET_SUCCESS;
 }
 
-RetType wizSendTestTask(void *) {
+
+RetType wizRcvTestTask(void *) {
     RESUME();
+    static uint8_t buff[1000];
+    static size_t len;
+
     static IPv4UDPSocket::addr_t addr;
     addr.ip[0] = 10;
     addr.ip[1] = 10;
@@ -172,8 +165,9 @@ RetType wizSendTestTask(void *) {
     addr.ip[3] = 96;
     addr.port = 8000;
 
-    static uint8_t buff[7] = {'L', 'a', 'u', 'n', 'c', 'h', '!'};
-    RetType ret = CALL(sock->send(buff, 7, &addr));
+//    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
+    RetType ret = CALL(sock->recv(buff, &len, &addr));
+
 
     RESET();
     return RET_SUCCESS;
@@ -181,9 +175,6 @@ RetType wizSendTestTask(void *) {
 
 RetType netStackInitTask(void *) {
     RESUME();
-
-    static Wiznet wiznet(*wiz_spi, *wiz_cs, *wiz_rst, *wiz_led);
-    w5500 = &wiznet;
 
     static IPv4UDPStack iPv4UdpStack{10, 10, 10, 69, \
                               255, 255, 255, 0,
@@ -195,6 +186,8 @@ RetType netStackInitTask(void *) {
     static uint8_t gateway_addr[4] = {192, 168, 1, 1};
     static uint8_t mac_addr[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     static IPv4UDPSocket::addr_t addr;
+    static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
+
 
     sock = stack->get_socket();
     addr.ip[0] = addr.ip[1] = addr.ip[2] = addr.ip[3] = 0;
@@ -205,8 +198,11 @@ RetType netStackInitTask(void *) {
     ipv4::IPv4Address(10, 10, 10, 69, &temp_addr);
     stack->add_multicast(temp_addr);
 
+    static Wiznet wiznet(*wiz_spi, *wiz_cs, *wiz_rst, *wiz_led_gpio, stack->get_eth(), packet);
+    w5500 = &wiznet;
+
     CALL(uartDev->write((uint8_t *) "W5500: Initializing\r\n", 23));
-    RetType ret = CALL(wiznet.init(mac_addr));
+    RetType ret = CALL(wiznet.init());
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "W5500: Failed to initialize\r\n", 29));
         goto netStackInitDone;
@@ -240,48 +236,42 @@ RetType rfmRxTask() {
     return RET_SUCCESS;
 }
 
-// TODO: Maybe make some of the post processing more efficient in terms of speed and memory
 RetType maxm10sTask(void *) {
     RESUME();
+
     static uint8_t data[1000];
     static char *messages;
     static size_t bytes_read = 0;
-    static nmea::GGA_DATA_T gga_data;
+    static GPSData gps_data;
     static uint8_t uart_buff[1000];
 
-    BLOCK();
     CALL(ledOne->toggle());
 
     RetType ret = CALL(maxm10s->read_data_rand_access(data, 1000, &bytes_read));
-    if (ret != RET_SUCCESS) {
-        CALL(uartDev->write((uint8_t *) "Failed to read data\r\n", 21));
-        goto max10TaskDone;
-    }
+    if (RET_SUCCESS == ret) {
 
-    CALL(uartDev->write(data, bytes_read));
+        messages = strtok(reinterpret_cast<char *>(data), "\r\n");
+        for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
+            if (strstr(message, "GGA") != nullptr) {
+                size_t len = strlen(message);
+                nmea::parse_gga(message, &gps_data, len);
+                // TODO: Any processing here
 
-    messages = strtok(reinterpret_cast<char *>(data), "\r\n");
-    for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
-        if (strstr(message, "GGA") != nullptr) {
-            size_t len = strlen(message);
-            nmea::parse_gga(message, &gga_data, len);
-            // TODO: Any processing here
-
-            size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
-                                                             "\tLatitude: %f\r\n"
-                                                             "\tLongitude: %f\r\n"
-                                                             "\tAltitude: %f\r\n"
-                                                             "\tSatellites: %d\r\n"
-                                                             "\tFix: %d\r\n"
-                                                             "\tSeconds since midnight: %f\r\n",
-                                   gga_data.latitude, gga_data.longitude, gga_data.alt, gga_data.num_sats,
-                                   gga_data.quality, gga_data.time);
-            CALL(uartDev->write(uart_buff, len2));
-            break;
+                size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
+                                                                 "\tLatitude: %f\r\n"
+                                                                 "\tLongitude: %f\r\n"
+                                                                 "\tAltitude: %f\r\n"
+                                                                 "\tSatellites: %d\r\n"
+                                                                 "\tFix: %d\r\n"
+                                                                 "\tSeconds since midnight: %f\r\n",
+                                       gps_data.latitude, gps_data.longitude, gps_data.alt, gps_data.num_sats,
+                                       gps_data.quality, gps_data.time);
+                CALL(uartDev->write(uart_buff, len2));
+                break;
+            }
         }
     }
 
-    max10TaskDone:
     RESET();
     return RET_SUCCESS;
 }
@@ -296,13 +286,11 @@ RetType deviceInitTask(void *) {
     if (ret != RET_SUCCESS) {
         CALL(uartDev->write((uint8_t *) "MAX10: Failed to initialize\r\n", 29));
     } else {
-        gpsTask = sched_start(maxm10sTask, {});
+        sched_start(maxm10sTask, {});
     }
 
-    BLOCK();
-    deviceInitDone:
-RESET();
-    return RET_SUCCESS;
+    RESET();
+    return RET_ERROR;
 }
 /* USER CODE END 0 */
 
@@ -312,6 +300,44 @@ RESET();
   */
 int main(void) {
     /* USER CODE BEGIN 1 */
+    constexpr auto launch_name_text = "\t ________  ___  _________        ___       ________  ___  ___  ________   ________  ___  ___\r\n"
+                                                "\t|\\   __  \\|\\  \\|\\___   ___\\     |\\  \\     |\\   __  \\|\\  \\|\\  \\|\\   ___  \\|\\   ____\\|\\  \\|\\  \\\r\n"
+                                                "\t\\ \\  \\|\\  \\ \\  \\|___ \\  \\_|     \\ \\  \\    \\ \\  \\|\\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\___|\\ \\  \\\\\\  \\\r\n"
+                                                "\t \\ \\   _  _\\ \\  \\   \\ \\  \\       \\ \\  \\    \\ \\   __  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\    \\ \\   __  \\\r\n"
+                                                "\t  \\ \\  \\\\  \\\\ \\  \\   \\ \\  \\       \\ \\  \\____\\ \\  \\ \\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\____\\ \\  \\ \\  \\\r\n"
+                                                "\t   \\ \\__\\\\ _\\\\ \\__\\   \\ \\__\\       \\ \\_______\\ \\__\\ \\__\\ \\_______\\ \\__\\\\ \\__\\ \\_______\\ \\__\\ \\__\\\r\n"
+                                                "\t    \\|__|\\|__|\\|__|    \\|__|        \\|_______|\\|__|\\|__|\\|_______|\\|__| \\|__|\\|_______|\\|__|\\|__|\r\n";
+
+    constexpr int launch_name_len = []() constexpr {
+        const char *ptr = launch_name_text;
+        while (*ptr) ++ptr;
+        return ptr - launch_name_text;
+    }();
+
+    constexpr auto radio_module_text = " ________  ________  ________  ___  ________          _____ ______   ________  ________  ___  ___  ___       _______\r\n"
+                                                "|\\   __  \\|\\   __  \\|\\   ___ \\|\\  \\|\\   __  \\        |\\   _ \\  _   \\|\\   __  \\|\\   ___ \\|\\  \\|\\  \\|\\  \\     |\\  ___ \\\r\n"
+                                                "\\ \\  \\|\\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\ \\  \\|\\  \\       \\ \\  \\\\\\__\\ \\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\   __/|\r\n"
+                                                " \\ \\   _  _\\ \\   __  \\ \\  \\ \\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\\\|__| \\  \\ \\  \\\\\\  \\ \\  \\ \\\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\  \\_|/__\r\n"
+                                                "  \\ \\  \\\\  \\\\ \\  \\ \\  \\ \\  \\_\\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\    \\ \\  \\ \\  \\\\\\  \\ \\  \\_\\\\ \\ \\  \\\\\\  \\ \\  \\____\\ \\  \\_|\\ \\\r\n"
+                                                "   \\ \\__\\\\ _\\\\ \\__\\ \\__\\ \\_______\\ \\__\\ \\_______\\       \\ \\__\\    \\ \\__\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\\r\n"
+                                                "    \\|__|\\|__|\\|__|\\|__|\\|_______|\\|__|\\|_______|        \\|__|     \\|__|\\|_______|\\|_______|\\|_______|\\|_______|\\|_______|\r\n";
+
+    constexpr int radio_module_len = []() constexpr {
+        const char *ptr = radio_module_text;
+        while (*ptr) ++ptr;
+        return ptr - radio_module_text;
+    }();
+
+    constexpr auto line_text = " ____________  ____________  ____________  ____________  ____________  ____________  ____________  ____________  ____________\r\n"
+                                            "|\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\r\n"
+                                            "\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________|\r\n";
+
+    constexpr int line_text_len = []() constexpr {
+        const char *ptr = line_text;
+        while (*ptr) ++ptr;
+        return ptr - line_text;
+    }();
+
 
     /* USER CODE END 1 */
 
@@ -339,6 +365,11 @@ int main(void) {
     MX_USART2_UART_Init();
     MX_SPI2_Init();
     /* USER CODE BEGIN 2 */
+    HAL_UART_Transmit(&huart4, (uint8_t *) launch_name_text, launch_name_len, 1000);
+    HAL_UART_Transmit(&huart4, (uint8_t *) radio_module_text, radio_module_len, 1000);
+    HAL_UART_Transmit(&huart4, (uint8_t *) line_text, line_text_len, 1000);
+
+
     HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPS_INT_GPIO_Port, GPS_INT_Pin, GPIO_PIN_RESET);
 
@@ -367,7 +398,7 @@ int main(void) {
     ret = max10resetDev.init();
     max10rst = &max10resetDev;
 
-    HALGPIODevice max10intDev("MAX10S INT", GPS_INT_GPIO_Port, GPS_INT_Pin);
+    HALGPIODevice max10intDev("MAXM10S INTERRUPT", GPS_INT_GPIO_Port, GPS_INT_Pin);
     ret = max10intDev.init();
     max10int = &max10intDev;
 
@@ -561,7 +592,7 @@ static void MX_UART4_Init(void) {
 
     /* USER CODE END UART4_Init 1 */
     huart4.Instance = UART4;
-    huart4.Init.BaudRate = 9600;
+    huart4.Init.BaudRate = 115200;
     huart4.Init.WordLength = UART_WORDLENGTH_8B;
     huart4.Init.StopBits = UART_STOPBITS_1;
     huart4.Init.Parity = UART_PARITY_NONE;
