@@ -44,6 +44,7 @@
 #include "device/peripherals/wiznet/wiznet.h"
 
 #include "sched/macros.h"
+#include "init/init.h"
 #include "device/peripherals/MAXM10S/MAXM10S.h"
 #include "common/utils/nmea.h"
 
@@ -205,10 +206,8 @@ RetType netStackInitTask(void *) {
     static Wiznet wiznet(*wiz_spi, *wiz_cs, *wiz_rst, *wiz_led_gpio, stack->get_eth(), packet);
     w5500 = &wiznet;
 
-    static IPv4UDPStack iPv4UdpStack(10, 10, 10, 69, 255, 255, 255, 0, *w5500);
+    static IPv4UDPStack iPv4UdpStack(10, 10, 10, 69, 255, 255, 255, 0, wiznet);
     stack = &iPv4UdpStack;
-
-
 
     sock = stack->get_socket();
     addr.ip[0] = addr.ip[1] = addr.ip[2] = addr.ip[3] = 0;
@@ -218,8 +217,6 @@ RetType netStackInitTask(void *) {
     ipv4::IPv4Addr_t temp_addr;
     ipv4::IPv4Address(10, 10, 10, 69, &temp_addr);
     stack->add_multicast(temp_addr);
-
-
 
     CALL(uartDev->write((uint8_t *) "W5500: Initializing\r\n", 23));
     RetType ret = CALL(wiznet.init());
@@ -234,8 +231,8 @@ RetType netStackInitTask(void *) {
     }
 
     CALL(uartDev->write((uint8_t *) "Successfully initialized network interface\n\r", 44));
-    sched_start(wizRecvTestTask, {});
     sched_start(wizTransTestTask, {});
+    tid_t tid = sched_start(PollDevice, (void *) w5500);
 
     netStackInitDone:
     RESET();
