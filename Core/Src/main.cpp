@@ -160,14 +160,16 @@ RetType wizRcvTestTask(void *) {
     static size_t len;
 
     static IPv4UDPSocket::addr_t addr;
-    addr.ip[0] = 10;
-    addr.ip[1] = 10;
-    addr.ip[2] = 10;
-    addr.ip[3] = 96;
+    addr.ip[0] = 239;
+    addr.ip[1] = 255;
+    addr.ip[2] = 255;
+    addr.ip[3] = 255;
     addr.port = 8000;
 
-//    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
+    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
     RetType ret = CALL(sock->recv(buff, &len, &addr));
+    CALL(uartDev->write((uint8_t *) "Received packet\r\n", 17));
+    CALL(uartDev->write(buff, len));
 
 
     RESET();
@@ -181,7 +183,7 @@ RetType wizTransTestTask(void *) {
     addr.ip[0] = 10;
     addr.ip[1] = 10;
     addr.ip[2] = 10;
-    addr.ip[3] = 96;
+    addr.ip[3] = 10;
     addr.port = 8000;
 
     static uint8_t buff[7] = {'L', 'a', 'u', 'n', 'c', 'h', '!'};
@@ -191,10 +193,18 @@ RetType wizTransTestTask(void *) {
     return RET_SUCCESS;
 }
 
+RetType pollWiznet(void *) {
+    RESUME();
+    CALL(w5500->poll());
+
+    RESET();
+    return RET_SUCCESS;
+}
+
 RetType netStackInitTask(void *) {
     RESUME();
 
-    static uint8_t ip_addr[4] = {192, 168, 1, 10};
+    static uint8_t ip_addr[4] = {10, 10, 10, 3};
     static uint8_t subnet_mask[4] = {255, 255, 255, 0};
     static uint8_t gateway_addr[4] = {192, 168, 1, 1};
     static uint8_t mac_addr[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -206,8 +216,10 @@ RetType netStackInitTask(void *) {
     static Wiznet wiznet(*wiz_spi, *wiz_cs, *wiz_rst, *wiz_led_gpio, stack->get_eth(), packet);
     w5500 = &wiznet;
 
-    static IPv4UDPStack iPv4UdpStack(10, 10, 10, 69, 255, 255, 255, 0, wiznet);
+    static IPv4UDPStack iPv4UdpStack(10, 10, 10, 3, 255, 255, 255, 0, wiznet);
     stack = &iPv4UdpStack;
+
+    w5500->set_upper(&stack->get_eth());
 
     sock = stack->get_socket();
     addr.ip[0] = addr.ip[1] = addr.ip[2] = addr.ip[3] = 0;
@@ -215,7 +227,7 @@ RetType netStackInitTask(void *) {
     sock->bind(addr); // TODO: Error handling
 
     ipv4::IPv4Addr_t temp_addr;
-    ipv4::IPv4Address(10, 10, 10, 69, &temp_addr);
+    ipv4::IPv4Address(239, 255, 255, 255, &temp_addr);
     stack->add_multicast(temp_addr);
 
     CALL(uartDev->write((uint8_t *) "W5500: Initializing\r\n", 23));
@@ -231,9 +243,10 @@ RetType netStackInitTask(void *) {
     }
 
     CALL(uartDev->write((uint8_t *) "Successfully initialized network interface\n\r", 44));
-    sched_start(wizTransTestTask, {});
-    tid_t tid = sched_start(PollDevice, (void *) w5500);
+    sched_start(wizRcvTestTask, {});
+//    tid_t tid = sched_start(PollDevice, (void *) w5500);
 
+    sched_start(pollWiznet, {});
     netStackInitDone:
     RESET();
     return RET_ERROR; // Kill task
@@ -415,6 +428,10 @@ int main(void) {
     HALGPIODevice max10resetDev("MAXM10S RESET", GPS_RST_GPIO_Port, GPS_RST_Pin);
     ret = max10resetDev.init();
     max10rst = &max10resetDev;
+
+    HALGPIODevice wizRstDev("Wiznet Reset", ETH_RST_GPIO_Port, ETH_RST_Pin);
+    ret = wizRstDev.init();
+    wiz_rst = &wizRstDev;
 
     HALGPIODevice max10intDev("MAXM10S INTERRUPT", GPS_INT_GPIO_Port, GPS_INT_Pin);
     ret = max10intDev.init();
