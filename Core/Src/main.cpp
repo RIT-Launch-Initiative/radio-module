@@ -166,10 +166,10 @@ RetType wizRcvTestTask(void *) {
     addr.ip[3] = 255;
     addr.port = 8000;
 
-    CALL(uartDev->write((uint8_t *) "Waiting for packet\r\n", 20));
     RetType ret = CALL(sock->recv(buff, &len, &addr));
-    CALL(uartDev->write((uint8_t *) "Received packet\r\n", 17));
+    CALL(uartDev->write((uint8_t *) "Received packet: ", 17));
     CALL(uartDev->write(buff, len));
+    CALL((uartDev->write((uint8_t *) "\r\n", 2)));
 
 
     RESET();
@@ -288,7 +288,7 @@ RetType maxm10sTask(void *) {
                 nmea::parse_gga(message, &gps_data, len);
                 // TODO: Any processing here
 
-                size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
+                static size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
                                                                  "\tLatitude: %f\r\n"
                                                                  "\tLongitude: %f\r\n"
                                                                  "\tAltitude: %f\r\n"
