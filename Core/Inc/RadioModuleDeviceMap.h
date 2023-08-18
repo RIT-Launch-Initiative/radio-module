@@ -16,6 +16,12 @@
 #include "device/I2CDevice.h"
 #include "device/SPIDevice.h"
 
+#include "device/peripherals/MAXM10S/MAXM10S.h"
+#include "device/peripherals/wiznet/wiznet.h"
+#include "device/peripherals/RFM9XW/RFM9XW.h"
+#include "device/peripherals/W25Q/W25Q.h"
+#include "device/peripherals/LED/LED.h"
+
 static const size_t MAP_SIZE = 15;
 
 
@@ -24,7 +30,7 @@ public:
     /// @brief constructor
     RadioModuleDeviceMap(I2CDevice &i2cDevice, SPIDevice &wiznetSPI, SPIDevice &flashSPI,
                           GPIODevice &wiznetCS, GPIODevice &flashCS, GPIODevice &ledOneGPIO,
-                          GPIODevice &ledTwoGPIO, GPIODevice &wiznetLEDGPIO, StreamDevice &uart)
+                          GPIODevice &ledTwoGPIO, GPIODevice &wiznetLEDGPIO, StreamDevice &uartDebug, StreamDevice &uartGPS)
                           : alloc::DeviceMap<MAP_SIZE>("Radio Module Device Map") {};
 
     /// @brief initialize the Sensor Module specific map
@@ -38,7 +44,12 @@ public:
     }
 
 private:
-
+    MAXM10S maxm10S;
+    RFM9XW rfm9xw;
+    Wiznet w5500;
+    W25Q w25q;
+    LED ledOne;
+    LED ledTwo;
 };
 
 #endif // RADIO_MODULE_DEVICE_MAP_H
