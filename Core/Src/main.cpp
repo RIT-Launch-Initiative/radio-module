@@ -153,10 +153,17 @@ RetType wizRecvTestTask(void *) {
     return RET_SUCCESS;
 }
 
+typedef struct {
+    uint8_t id;
+    uint64_t count;
+    uint32_t timestamp ;
+} test_struct;
+
 
 RetType wizRcvTestTask(void *) {
     RESUME();
     static uint8_t buff[1000];
+    static test_struct *test = (test_struct *) buff;
     static size_t len;
 
     static IPv4UDPSocket::addr_t addr;
@@ -167,9 +174,14 @@ RetType wizRcvTestTask(void *) {
     addr.port = 8000;
 
     RetType ret = CALL(sock->recv(buff, &len, &addr));
-    CALL(uartDev->write((uint8_t *) "Received packet: ", 17));
-    CALL(uartDev->write(buff, len));
-    CALL((uartDev->write((uint8_t *) "\r\n", 2)));
+    if (RET_SUCCESS == ret) {
+        snprintf((char *) buff, 1000, "Tick %lu: %llu\r\n", test->timestamp, test->count);
+        CALL(uartDev->write(buff, strlen((char *) buff)));
+    }
+//    CALL(uartDev->write((uint8_t *) "Received packet: ", 17));
+//    CALL(uartDev->write(buff, len));
+//    CALL((uartDev->write((uint8_t *) "\r\n", 2)));`Z
+
 
 
     RESET();
