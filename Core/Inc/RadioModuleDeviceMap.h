@@ -19,25 +19,27 @@
 #include "device/peripherals/MAXM10S/MAXM10S.h"
 #include "device/peripherals/wiznet/wiznet.h"
 #include "device/peripherals/RFM9XW/RFM9XW.h"
-#include "device/peripherals/W25Q/W25Q.h"
 #include "device/peripherals/LED/LED.h"
 
-static const size_t MAP_SIZE = 15;
+static const size_t MAP_SIZE = 5;
 
 
 class RadioModuleDeviceMap : public alloc::DeviceMap<MAP_SIZE> {
 public:
     /// @brief constructor
-    RadioModuleDeviceMap(I2CDevice &i2cDevice, SPIDevice &wiznetSPI, SPIDevice &flashSPI,
-                          GPIODevice &wiznetCS, GPIODevice &flashCS, GPIODevice &ledOneGPIO,
-                          GPIODevice &ledTwoGPIO, GPIODevice &wiznetLEDGPIO, StreamDevice &uartDebug, StreamDevice &uartGPS)
-                          : alloc::DeviceMap<MAP_SIZE>("Radio Module Device Map") {};
+    RadioModuleDeviceMap(I2CDevice &gpsI2C, StreamDevice &gpsUART, GPIODevice &gpsReset, GPIODevice &gpsInterrupt,
+            SPIDevice &wiznetSPI, GPIODevice &wiznetCS, GPIODevice &wiznetReset, GPIODevice &wiznetLED, NetworkLayer &wiznetUpper, Packet &wiznetPacket,
+            SPIDevice &rfmSPI, GPIODevice &rfmCS, GPIODevice &rfmReset, GPIODevice &ledOneGPIO, GPIODevice &ledTwoGPIO)
+                          : alloc::DeviceMap<MAP_SIZE>("Radio Module Device Map"), maxm10S(gpsI2C, gpsUART, gpsReset, gpsInterrupt), rfm9xw(rfmSPI, rfmCS, rfmReset),
+                            w5500(wiznetSPI, wiznetCS, wiznetReset, wiznetLED, wiznetUpper, wiznetPacket), ledOne(ledOneGPIO), ledTwo(ledTwoGPIO) {};
 
     /// @brief initialize the Sensor Module specific map
     RetType init() {
-
-        RetType ret;
-
+        int ret = add("MAXM10S", &maxm10S);
+//        ret += add("RFM9XW", &rfm9xw);
+        ret += add("W5500", &w5500);
+//        ret += add("LED_ONE", &ledOne);
+//        ret += add("LED_TWO", &ledTwo);
 
         // SUCCESS if ret == 0
         return static_cast<RetType>(ret);
@@ -47,7 +49,6 @@ private:
     MAXM10S maxm10S;
     RFM9XW rfm9xw;
     Wiznet w5500;
-    W25Q w25q;
     LED ledOne;
     LED ledTwo;
 };

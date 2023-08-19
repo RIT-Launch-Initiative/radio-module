@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "RadioModuleDeviceMap.h"
+
 #include "device/platforms/stm32/swdebug.h"
 
 #include "device/platforms/stm32/HAL_GPIODevice.h"
@@ -40,8 +42,6 @@
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
-
-#include "device/peripherals/wiznet/wiznet.h"
 
 #include "sched/macros.h"
 #include "init/init.h"
@@ -91,6 +91,10 @@ static HALGPIODevice *wiz_rst = nullptr;
 static HALGPIODevice *wiz_led_gpio = nullptr;
 static LED *wiz_led = nullptr;
 tid_t receiveTask = -1;
+
+static HALSPIDevice* rfm_spi = nullptr;
+static HALGPIODevice* rfm_cs = nullptr;
+static HALGPIODevice *rfm_rst = nullptr;
 
 static MAXM10S *maxm10s = nullptr;
 static HALI2CDevice *max10i2c = nullptr;
@@ -264,21 +268,6 @@ RetType netStackInitTask(void *) {
     return RET_ERROR; // Kill task
 }
 
-
-RetType rfmTxTask() {
-    RESUME();
-
-    RESET();
-    return RET_SUCCESS;
-}
-
-RetType rfmRxTask() {
-    RESUME();
-
-    RESET();
-    return RET_SUCCESS;
-}
-
 RetType maxm10sTask(void *) {
     RESUME();
 
@@ -408,9 +397,9 @@ int main(void) {
     MX_USART2_UART_Init();
     MX_SPI2_Init();
     /* USER CODE BEGIN 2 */
-    HAL_UART_Transmit(&huart4, (uint8_t *) launch_name_text, launch_name_len, 1000);
-    HAL_UART_Transmit(&huart4, (uint8_t *) radio_module_text, radio_module_len, 1000);
-    HAL_UART_Transmit(&huart4, (uint8_t *) line_text, line_text_len, 1000);
+    HAL_UART_Transmit(&huart4, (const uint8_t *) launch_name_text, launch_name_len, 1000);
+    HAL_UART_Transmit(&huart4, (const uint8_t *) radio_module_text, radio_module_len, 1000);
+    HAL_UART_Transmit(&huart4, (const uint8_t *) line_text, line_text_len, 1000);
 
 
     HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
@@ -454,7 +443,11 @@ int main(void) {
     LED led1(led1GPIO, LED_ON);
     ledOne = &led1;
 
-    static HALSPIDevice wiz_spi_local("Wiznet SPI", &hspi1);
+    HALGPIODevice led2GPIO("LED 2", LED2_GPIO_Port, LED2_Pin);
+    ret = led1GPIO.init();
+    LED led2(led2GPIO, LED_ON);
+
+    HALSPIDevice wiz_spi_local("Wiznet SPI", &hspi1);
     ret = wiz_spi_local.init();
     if (RET_SUCCESS != ret) {
         swprint("#RED#Failed to initialize Wiznet SPI");
@@ -462,12 +455,30 @@ int main(void) {
         wiz_spi = &wiz_spi_local;
     }
 
-    static HALGPIODevice wiz_cs_local("Wiznet CS", ETH_CS_GPIO_Port, ETH_CS_Pin);
+    HALGPIODevice wiz_cs_local("Wiznet CS", ETH_CS_GPIO_Port, ETH_CS_Pin);
     wiz_cs = &wiz_cs_local;
 
-    sched_start(pollTask, {});
-    sched_start(netStackInitTask, {});
-    sched_start(deviceInitTask, {});
+    HALSPIDevice rfm_spi("RFM9XW SPI", &hspi2);
+    HALGPIODevice rfm_cs("RFM9XW CS", RF_CS_GPIO_Port, RF_CS_Pin);
+    HALGPIODevice rfm_rst("RFM9XW Reset", RF_RST_GPIO_Port, RF_RST_Pin);
+
+    static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
+    RadioModuleDeviceMap radioModuleDeviceMap(max10i2cDev, max10uartDev, max10resetDev, max10intDev, wiz_spi_local, wiz_cs_local, wizRstDev, *wiz_led_gpio, stack->get_eth(), packet, rfm_spi, rfm_cs, rfm_rst, led1GPIO, led2GPIO);
+
+//    sched_start(pollTask, {});
+//    sched_start(netStackInitTask, {});
+    ret = radioModuleDeviceMap.init();
+    task_func_t tasks[3] = {maxm10sTask, wizRecvTestTask, netStackInitTask};
+    void *task_args[3] = {0};
+    init_arg_t init_args = {
+            .dev_map = &radioModuleDeviceMap,
+            .tasks = tasks,
+            .args = task_args,
+            .num_tasks = 3,
+    };
+    sched_start(init, static_cast<void *>(&init_args));
+
+//    sched_start(deviceInitTask, {});
 
     /* USER CODE END 2 */
 
