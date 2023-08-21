@@ -145,7 +145,6 @@ typedef struct {
     uint32_t timestamp ;
 } test_struct;
 
-
 RetType wizRcvTestTask(void *) {
     RESUME();
     static uint8_t buff[1000];
@@ -186,9 +185,73 @@ RetType wizTransTestTask(void *) {
     return RET_SUCCESS;
 }
 
+RetType maxm10sTask(void *) {
+    RESUME();
+
+    static uint8_t data[1000];
+    static char *messages;
+    static size_t bytes_read = 0;
+    static GPSData gps_data;
+    static uint8_t uart_buff[1000];
+
+    CALL(led_one.toggle());
+
+    RetType ret = CALL(maxm10s.read_data_rand_access(data, 1000, &bytes_read));
+    if (RET_SUCCESS == ret) {
+        messages = strtok(reinterpret_cast<char *>(data), "\r\n");
+        for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
+            if (strstr(message, "GGA") != nullptr) {
+                size_t len = strlen(message);
+                nmea::parse_gga(message, &gps_data, len);
+                // TODO: Any processing here
+
+                static size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
+                                                                        "\tLatitude: %f\r\n"
+                                                                        "\tLongitude: %f\r\n"
+                                                                        "\tAltitude: %f\r\n"
+                                                                        "\tSatellites: %d\r\n"
+                                                                        "\tFix: %d\r\n"
+                                                                        "\tSeconds since midnight: %f\r\n",
+                                              gps_data.latitude, gps_data.longitude, gps_data.alt, gps_data.num_sats,
+                                              gps_data.quality, gps_data.time);
+                CALL(uart.write(uart_buff, len2));
+                break;
+            }
+        }
+    }
+
+    RESET();
+    return RET_SUCCESS;
+}
+
+RetType device_init() {
+    RESUME();
+
+    uart.init();
+    led_one_gpio.init();
+    led_one.init();
+    led_two_gpio.init();
+    led_two.init();
+
+    wiz_spi.init();
+    wiz_cs.init();
+    wiz_reset.init();
+    wiz_led_gpio.init();
+
+    maxm10s_i2c.init();
+    maxm10s_uart.init();
+    maxm10s_reset.init();
+    maxm10s_interrupt.init();
+
+    CALL(maxm10s.init());
+    sched_start(maxm10sTask, {});
+
+    RESET();
+    return RET_SUCCESS;
+}
 
 
-RetType netStackInitTask(void *) {
+RetType network_init() {
     RESUME();
 
     static uint8_t ip_addr[4] = {10, 10, 10, 3};
@@ -220,6 +283,7 @@ RetType netStackInitTask(void *) {
     }
 
     CALL(uart.write((uint8_t *) "Successfully initialized network interface\n\r", 44));
+
     sched_start(wizRcvTestTask, {});
     sched_start(pollWiznet, {});
 
@@ -228,48 +292,14 @@ RetType netStackInitTask(void *) {
     return RET_ERROR; // Kill task
 }
 
-RetType maxm10sTask(void *) {
+
+
+RetType init_task(void *) {
     RESUME();
 
-    static uint8_t data[1000];
-    static char *messages;
-    static size_t bytes_read = 0;
-    static GPSData gps_data;
-    static uint8_t uart_buff[1000];
+    CALL(device_init());
+    CALL(network_init());
 
-    CALL(led_one.toggle());
-
-    RetType ret = CALL(maxm10s.read_data_rand_access(data, 1000, &bytes_read));
-    if (RET_SUCCESS == ret) {
-        messages = strtok(reinterpret_cast<char *>(data), "\r\n");
-        for (char *message = messages; message != nullptr; message = strtok(nullptr, "\r\n")) {
-            if (strstr(message, "GGA") != nullptr) {
-                size_t len = strlen(message);
-                nmea::parse_gga(message, &gps_data, len);
-                // TODO: Any processing here
-
-                static size_t len2 = snprintf((char *) uart_buff, 1000, "GPS Data:\r\n"
-                                                                 "\tLatitude: %f\r\n"
-                                                                 "\tLongitude: %f\r\n"
-                                                                 "\tAltitude: %f\r\n"
-                                                                 "\tSatellites: %d\r\n"
-                                                                 "\tFix: %d\r\n"
-                                                                 "\tSeconds since midnight: %f\r\n",
-                                       gps_data.latitude, gps_data.longitude, gps_data.alt, gps_data.num_sats,
-                                       gps_data.quality, gps_data.time);
-                CALL(uart.write(uart_buff, len2));
-                break;
-            }
-        }
-    }
-
-    RESET();
-    return RET_SUCCESS;
-}
-
-RetType deviceInitTask(void *) {
-    RESUME();
-    CALL(maxm10s.init());
     RESET();
     return RET_ERROR;
 }
@@ -350,18 +380,13 @@ int main(void) {
     HAL_UART_Transmit(&huart4, (uint8_t *) radio_module_text, radio_module_len, 1000);
     HAL_UART_Transmit(&huart4, (uint8_t *) line_text, line_text_len, 1000);
 
-
-    HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPS_INT_GPIO_Port, GPS_INT_Pin, GPIO_PIN_RESET);
-
     if (!sched_init(&HAL_GetTick)) {
         HAL_UART_Transmit_IT(&huart2, (uint8_t *) "Failed to init scheduler\n\r", 30);
         return -1;
     }
 
     sched_start(pollTask, {});
-    sched_start(netStackInitTask, {});
-    sched_start(deviceInitTask, {});
+    sched_start(init_task, {});
 
     /* USER CODE END 2 */
 
