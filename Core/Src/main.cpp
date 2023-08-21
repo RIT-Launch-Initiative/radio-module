@@ -463,13 +463,13 @@ int main(void) {
     HALGPIODevice rfm_rst("RFM9XW Reset", RF_RST_GPIO_Port, RF_RST_Pin);
 
     static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
-    RadioModuleDeviceMap radioModuleDeviceMap(max10i2cDev, max10uartDev, max10resetDev, max10intDev, wiz_spi_local, wiz_cs_local, wizRstDev, *wiz_led_gpio, stack->get_eth(), packet, rfm_spi, rfm_cs, rfm_rst, led1GPIO, led2GPIO);
+    static RadioModuleDeviceMap radioModuleDeviceMap(max10i2cDev, max10uartDev, max10resetDev, max10intDev, wiz_spi_local, wiz_cs_local, wizRstDev, *wiz_led_gpio, stack->get_eth(), packet, rfm_spi, rfm_cs, rfm_rst, led1GPIO, led2GPIO);
 
 //    sched_start(pollTask, {});
 //    sched_start(netStackInitTask, {});
     ret = radioModuleDeviceMap.init();
-    task_func_t tasks[3] = {maxm10sTask, wizRecvTestTask, netStackInitTask};
-    void *task_args[3] = {0};
+    static task_func_t tasks[3] = {maxm10sTask, wizRecvTestTask, netStackInitTask};
+    static void *task_args[3] = {nullptr};
     init_arg_t init_args = {
             .dev_map = &radioModuleDeviceMap,
             .tasks = tasks,
