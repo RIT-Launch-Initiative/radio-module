@@ -25,7 +25,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "device/platforms/stm32/swdebug.h"
+#include "sched/macros.h"
+#include "init/init.h"
+#include "common/utils/nmea.h"
 
 #include "device/platforms/stm32/HAL_GPIODevice.h"
 #include "device/platforms/stm32/HAL_UARTDevice.h"
@@ -33,20 +35,17 @@
 #include "device/platforms/stm32/HAL_I2CDevice.h"
 #include "device/peripherals/LED/LED.h"
 
-
-//#include "device/peripherals/RFM95W/RFM95W.h"
-
 #include "device/peripherals/wiznet/wiznet.h"
+#include "device/peripherals/MAXM10S/MAXM10S.h"
+#include "device/peripherals/RFM9XW/RFM9XW.h"
+
 #include "net/packet/Packet.h"
 #include "net/stack/IPv4UDP/IPv4UDPStack.h"
 #include "net/stack/IPv4UDP/IPv4UDPSocket.h"
 
-#include "device/peripherals/wiznet/wiznet.h"
 
-#include "sched/macros.h"
-#include "init/init.h"
-#include "device/peripherals/MAXM10S/MAXM10S.h"
-#include "common/utils/nmea.h"
+
+
 
 /* USER CODE END Includes */
 
@@ -76,6 +75,8 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 static HALUARTDevice uart("UART", &huart4);
 static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
+static Packet rf_packet = alloc::Packet<10, 0>();
+
 
 static HALSPIDevice wiz_spi("Wiznet SPI", &hspi1);
 static HALGPIODevice wiz_cs("Wiznet CS", ETH_CS_GPIO_Port, ETH_CS_Pin);
@@ -85,6 +86,11 @@ static Wiznet w5500(wiz_spi, wiz_cs, wiz_reset, wiz_led_gpio, packet);
 
 static IPv4UDPStack network_stack(10, 10, 10, 3, 255, 255, 255, 0, w5500);
 static IPv4UDPSocket *stack_socket = network_stack.get_socket();
+
+static HALSPIDevice rfm_spi("RFM SPI", &hspi2);
+static HALGPIODevice rfm_cs("RFM CS", RF_CS_GPIO_Port, RF_CS_Pin);
+static HALGPIODevice rfm_reset("RFM Reset", RF_RST_GPIO_Port, RF_RST_Pin);
+static RFM9XW rfm9xw(rfm_spi, rfm_cs, rfm_reset);
 
 static HALI2CDevice maxm10s_i2c("MAXM10S I2C", &hi2c1);
 static HALUARTDevice maxm10s_uart("MAXM10S UART", &huart2);
@@ -126,6 +132,7 @@ static void MX_SPI2_Init(void);
 RetType pollTask(void *) {
     RESUME();
     CALL(wiz_spi.poll());
+    CALL(rfm_spi.poll());
     CALL(maxm10s_i2c.poll());
     CALL(uart.poll());
     RESET();
@@ -180,6 +187,23 @@ RetType wizTransTestTask(void *) {
 
     static uint8_t buff[7] = {'L', 'a', 'u', 'n', 'c', 'h', '!'};
     RetType ret = CALL(stack_socket->send(buff, 7, &addr));
+
+    RESET();
+    return RET_SUCCESS;
+}
+
+RetType rfm9xw_tx_task(void *) {
+    RESUME();
+
+    netinfo_t netinfo;
+    constexpr uint8_t data[] = "Launch!";
+    alloc::Packet<10, 0>();
+    rf_packet.push(const_cast<uint8_t *>(data), 7);
+
+    RetType ret = CALL(rfm9xw.transmit2(packet, netinfo, nullptr));
+    if (RET_SUCCESS == ret) {
+        CALL(led_two.toggle());
+    }
 
     RESET();
     return RET_SUCCESS;
@@ -243,8 +267,21 @@ RetType device_init() {
     maxm10s_reset.init();
     maxm10s_interrupt.init();
 
-    CALL(maxm10s.init());
-    sched_start(maxm10sTask, {});
+    rfm_spi.init();
+    rfm_cs.init();
+    rfm_reset.init();
+
+    RetType ret = CALL(maxm10s.init());
+    if (RET_SUCCESS == ret) {
+        CALL(uart.write((uint8_t *) "MAX-M10S Initialized\r\n", 22));
+        sched_start(maxm10sTask, {});
+    }
+
+    ret = CALL(rfm9xw.init());
+    if (RET_SUCCESS == ret) {
+        CALL(uart.write((uint8_t *) "RFM95W Initialized\r\n", 20));
+        sched_start(rfm9xw_tx_task, {});
+    }
 
     RESET();
     return RET_SUCCESS;
