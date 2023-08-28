@@ -75,7 +75,8 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 static HALUARTDevice uart("UART", &huart4);
 static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
-static Packet rf_packet = alloc::Packet<10, 0>();
+static Packet rf_packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
+
 
 
 static HALSPIDevice wiz_spi("Wiznet SPI", &hspi1);
@@ -90,7 +91,13 @@ static IPv4UDPSocket *stack_socket = network_stack.get_socket();
 static HALSPIDevice rfm_spi("RFM SPI", &hspi2);
 static HALGPIODevice rfm_cs("RFM CS", RF_CS_GPIO_Port, RF_CS_Pin);
 static HALGPIODevice rfm_reset("RFM Reset", RF_RST_GPIO_Port, RF_RST_Pin);
-static RFM9XW rfm9xw(rfm_spi, rfm_cs, rfm_reset);
+static HALGPIODevice rfm_dio_zero("RFM DIO0", RF_DIO0_GPIO_Port, RF_DIO0_Pin);
+static HALGPIODevice rfm_dio_one("RFM DIO1", RF_DIO1_GPIO_Port, RF_DIO1_Pin);
+static HALGPIODevice rfm_dio_two("RFM DIO2", RF_DIO2_GPIO_Port, RF_DIO2_Pin);
+static HALGPIODevice rfm_dio_three("RFM DIO3", RF_DIO3_GPIO_Port, RF_DIO3_Pin);
+static HALGPIODevice rfm_dio_four("RFM DIO4", RF_DIO4_GPIO_Port, RF_DIO4_Pin);
+static HALGPIODevice rfm_dio_five("RFM DIO5", RF_DIO5_GPIO_Port, RF_DIO5_Pin);
+static RFM9XW rfm9xw(rfm_spi, rfm_cs, rfm_reset, rfm_dio_zero, rfm_dio_one, rfm_dio_two, rfm_dio_three, rfm_dio_four, rfm_dio_five);
 
 static HALI2CDevice maxm10s_i2c("MAXM10S I2C", &hi2c1);
 static HALUARTDevice maxm10s_uart("MAXM10S UART", &huart2);
@@ -185,7 +192,7 @@ RetType wizTransTestTask(void *) {
     addr.ip[3] = 10;
     addr.port = 8000;
 
-    static uint8_t buff[7] = {'L', 'a', 'u', 'n', 'c', 'h', '!'};
+    static uint8_t buff[] = "Launch!";
     RetType ret = CALL(stack_socket->send(buff, 7, &addr));
 
     RESET();
@@ -195,15 +202,33 @@ RetType wizTransTestTask(void *) {
 RetType rfm9xw_tx_task(void *) {
     RESUME();
 
-    netinfo_t netinfo;
-    constexpr uint8_t data[] = "Launch!";
-    alloc::Packet<10, 0>();
-    rf_packet.push(const_cast<uint8_t *>(data), 7);
+#define RECEIVER
 
-    RetType ret = CALL(rfm9xw.transmit2(packet, netinfo, nullptr));
+#ifdef RECEIVER
+    static uint8_t data[100] = {0};
+    static uint8_t len = 0;
+    RetType ret = CALL(rfm9xw.continuous_rx(data, 100, &len));
     if (RET_SUCCESS == ret) {
         CALL(led_two.toggle());
+        CALL(uart.write(data, len));
     }
+
+#else
+
+    netinfo_t netinfo;
+    static uint8_t data[] = "Launch!";
+    rf_packet.push(data, 7);
+
+//    RetType ret = CALL(rfm9xw.transmit2(rf_packet, netinfo, nullptr));
+    RetType ret = CALL(rfm9xw.send_data(data, 7));
+    if (RET_SUCCESS == ret) {
+        CALL(led_two.toggle());
+        CALL(uart.write(data, 7));
+    }
+
+
+    rf_packet.clear();
+#endif
 
     RESET();
     return RET_SUCCESS;
@@ -280,7 +305,13 @@ RetType device_init() {
     ret = CALL(rfm9xw.init());
     if (RET_SUCCESS == ret) {
         CALL(uart.write((uint8_t *) "RFM95W Initialized\r\n", 20));
-        sched_start(rfm9xw_tx_task, {});
+#ifdef RECEIVER
+        ret = CALL(rfm9xw.enable_continuous_rx());
+        if (RET_SUCCESS == ret) {
+            CALL(uart.write((uint8_t *) "RFM95W Continuous RX Enabled\r\n", 30));
+        }
+#endif
+//        sched_start(rfm9xw_tx_task, {});
     }
 
     RESET();
