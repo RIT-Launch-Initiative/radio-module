@@ -202,7 +202,7 @@ RetType wizTransTestTask(void *) {
 RetType rfm9xw_tx_task(void *) {
     RESUME();
 
-#define RECEIVER
+//#define RECEIVER
 
 #ifdef RECEIVER
     static uint8_t data[100] = {0};
@@ -223,6 +223,7 @@ RetType rfm9xw_tx_task(void *) {
     RetType ret = CALL(rfm9xw.send_data(data, 7));
     if (RET_SUCCESS == ret) {
         CALL(led_two.toggle());
+
         CALL(uart.write(data, 7));
     }
 
@@ -311,7 +312,7 @@ RetType device_init() {
             CALL(uart.write((uint8_t *) "RFM95W Continuous RX Enabled\r\n", 30));
         }
 #endif
-//        sched_start(rfm9xw_tx_task, {});
+        sched_start(rfm9xw_tx_task, {});
     }
 
     RESET();
