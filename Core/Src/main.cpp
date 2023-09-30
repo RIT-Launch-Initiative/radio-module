@@ -108,7 +108,7 @@ static MAXM10S maxm10s(maxm10s_i2c, maxm10s_uart, maxm10s_reset, maxm10s_interru
 static HALGPIODevice led_one_gpio("LED1", LED1_GPIO_Port, LED1_Pin);
 static LED led_one(led_one_gpio);
 
-static HALGPIODevice led_two_gpio("LED1", LED2_GPIO_Port, LED2_Pin);
+static HALGPIODevice led_two_gpio("LED2", LED2_GPIO_Port, LED2_Pin);
 static LED led_two(led_two_gpio);
 
 /* USER CODE END PV */
@@ -203,7 +203,6 @@ RetType rfm9xw_tx_task(void *) {
     RESUME();
 
 //#define RECEIVER
-
 #ifdef RECEIVER
     static uint8_t data[100] = {0};
     static uint8_t len = 0;
@@ -212,7 +211,6 @@ RetType rfm9xw_tx_task(void *) {
         CALL(led_two.toggle());
         CALL(uart.write(data, len));
     }
-
 #else
 
     netinfo_t netinfo;
@@ -311,6 +309,7 @@ RetType device_init() {
         if (RET_SUCCESS == ret) {
             CALL(uart.write((uint8_t *) "RFM95W Continuous RX Enabled\r\n", 30));
         }
+#else
 #endif
         sched_start(rfm9xw_tx_task, {});
     }
@@ -480,7 +479,7 @@ void SystemClock_Config(void) {
     /** Configure the main internal regulator output voltage
     */
     __HAL_RCC_PWR_CLK_ENABLE();
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
     /** Initializes the RCC Oscillators according to the specified parameters
     * in the RCC_OscInitTypeDef structure.
@@ -488,8 +487,20 @@ void SystemClock_Config(void) {
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
     RCC_OscInitStruct.HSIState = RCC_HSI_ON;
     RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLM = 8;
+    RCC_OscInitStruct.PLL.PLLN = 180;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+    RCC_OscInitStruct.PLL.PLLQ = 2;
+    RCC_OscInitStruct.PLL.PLLR = 2;
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        Error_Handler();
+    }
+
+    /** Activate the Over-Drive mode
+    */
+    if (HAL_PWREx_EnableOverDrive() != HAL_OK) {
         Error_Handler();
     }
 
@@ -497,15 +508,16 @@ void SystemClock_Config(void) {
     */
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
                                   | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK) {
         Error_Handler();
     }
 }
+
 
 /**
   * @brief I2C1 Initialization Function
