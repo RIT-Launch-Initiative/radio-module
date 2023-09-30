@@ -221,6 +221,7 @@ RetType rfm9xw_tx_task(void *) {
     RetType ret = CALL(rfm9xw.send_data(data, 7));
     if (RET_SUCCESS == ret) {
         CALL(led_two.toggle());
+
         CALL(uart.write(data, 7));
     }
 
