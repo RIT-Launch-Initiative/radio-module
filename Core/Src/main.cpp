@@ -201,40 +201,6 @@ RetType wizTransTestTask(void *) {
     return RET_SUCCESS;
 }
 
-RetType rfm9xw_tx_task(void *) {
-    RESUME();
-
-//#define RECEIVER
-#ifdef RECEIVER
-    static uint8_t data[100] = {0};
-    static uint8_t len = 0;
-    RetType ret = CALL(rfm9xw.continuous_rx(data, 100, &len));
-    if (RET_SUCCESS == ret) {
-        CALL(led_two.toggle());
-        CALL(uart.write(data, len));
-    }
-#else
-
-    netinfo_t netinfo;
-    static uint8_t data[] = "Launch!";
-    rf_packet.push(data, 7);
-
-//    RetType ret = CALL(rfm9xw.transmit2(rf_packet, netinfo, nullptr));
-    RetType ret = CALL(rfm9xw.send_data(data, 7));
-    if (RET_SUCCESS == ret) {
-        CALL(led_two.toggle());
-
-        CALL(uart.write(data, 7));
-    }
-
-
-    rf_packet.clear();
-#endif
-
-    RESET();
-    return RET_SUCCESS;
-}
-
 RetType maxm10sTask(void *) {
     RESUME();
 
@@ -301,15 +267,13 @@ RetType rfmTxTask(void *) {
 RetType rfmRxTask(void *) {
     RESUME();
 
-    static uint8_t buffer[1000] = {0};
-//    RetType ret = CALL(rfm9xw.receive_data(buffer, 1000));
-//    if (RET_SUCCESS != ret) {
-//        CALL(uart.write((uint8_t *) "Receive error!\r\n", 16));
-//        RESET();
-//        return RET_SUCCESS; // Dont kill the task
-//
-//
-//    CALL(uart.write(buffer, 1000));
+    static uint8_t data[100] = {0};
+    static uint8_t len = 0;
+    RetType ret = CALL(rfm9xw.continuous_rx(data, 100, &len));
+    if (RET_SUCCESS == ret) {
+        CALL(led_two.toggle());
+        CALL(uart.write(data, len));
+    }
 
     RESET();
     return RET_SUCCESS;
@@ -352,9 +316,10 @@ RetType device_init() {
         if (RET_SUCCESS == ret) {
             CALL(uart.write((uint8_t *) "RFM95W Continuous RX Enabled\r\n", 30));
         }
+        sched_start(rfmRxTask, {});
 #else
-#endif
         sched_start(rfmTxTask, {});
+#endif
     }
 
     RESET();
