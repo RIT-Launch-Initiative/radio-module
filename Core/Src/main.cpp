@@ -74,9 +74,10 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 static HALUARTDevice uart("UART", &huart4);
-static Packet packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
-static Packet rf_packet = alloc::Packet<IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
-
+static Packet packet = alloc::Packet<
+        IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
+static Packet rf_packet = alloc::Packet<
+        IPv4UDPSocket::MTU_NO_HEADERS - IPv4UDPSocket::HEADERS_SIZE, IPv4UDPSocket::HEADERS_SIZE>();
 
 
 static HALSPIDevice wiz_spi("Wiznet SPI", &hspi1);
@@ -97,7 +98,8 @@ static HALGPIODevice rfm_dio_two("RFM DIO2", RF_DIO2_GPIO_Port, RF_DIO2_Pin);
 static HALGPIODevice rfm_dio_three("RFM DIO3", RF_DIO3_GPIO_Port, RF_DIO3_Pin);
 static HALGPIODevice rfm_dio_four("RFM DIO4", RF_DIO4_GPIO_Port, RF_DIO4_Pin);
 static HALGPIODevice rfm_dio_five("RFM DIO5", RF_DIO5_GPIO_Port, RF_DIO5_Pin);
-static RFM9XW rfm9xw(rfm_spi, rfm_cs, rfm_reset, rfm_dio_zero, rfm_dio_one, rfm_dio_two, rfm_dio_three, rfm_dio_four, rfm_dio_five);
+static RFM9XW rfm9xw(rfm_spi, rfm_cs, rfm_reset, rfm_dio_zero, rfm_dio_one, rfm_dio_two, rfm_dio_three, rfm_dio_four,
+                     rfm_dio_five);
 
 static HALI2CDevice maxm10s_i2c("MAXM10S I2C", &hi2c1);
 static HALUARTDevice maxm10s_uart("MAXM10S UART", &huart2);
@@ -156,7 +158,7 @@ RetType pollWiznet(void *) {
 typedef struct {
     uint8_t id;
     uint64_t count;
-    uint32_t timestamp ;
+    uint32_t timestamp;
 } test_struct;
 
 RetType wizRcvTestTask(void *) {
@@ -242,7 +244,7 @@ RetType maxm10sTask(void *) {
     static GPSData gps_data;
     static uint8_t uart_buff[1000];
 
-    CALL(led_one.toggle());
+    CALL(led_one.set_state(LED_ON));
 
     RetType ret = CALL(maxm10s.read_data_rand_access(data, 1000, &bytes_read));
     if (RET_SUCCESS == ret) {
@@ -279,18 +281,35 @@ RetType maxm10sTask(void *) {
     return RET_SUCCESS;
 }
 
+RetType rfmTxTask(void *) {
+    RESUME();
+
+    static uint8_t data[] = "Launch!";
+    RetType ret = CALL(rfm9xw.transmit_data(data, 7));
+    if (RET_SUCCESS == ret) {
+        CALL(led_two.set_state(LED_ON));
+        CALL(uart.write(data, 7));
+    } else {
+        CALL(led_two.set_state(LED_OFF));
+        CALL(uart.write((uint8_t *) "Send error!\r\n", 13));
+    }
+
+    RESET();
+    return RET_SUCCESS;
+}
+
 RetType rfmRxTask(void *) {
     RESUME();
 
     static uint8_t buffer[1000] = {0};
-    RetType ret = CALL(rfm9xw.receive_data(buffer, 1000));
-    if (RET_SUCCESS != ret) {
-        CALL(uart.write((uint8_t *) "Receive error!\r\n", 16));
-        RESET();
-        return RET_SUCCESS; // Dont kill the task
-
-
-    CALL(uart.write(buffer, 1000));
+//    RetType ret = CALL(rfm9xw.receive_data(buffer, 1000));
+//    if (RET_SUCCESS != ret) {
+//        CALL(uart.write((uint8_t *) "Receive error!\r\n", 16));
+//        RESET();
+//        return RET_SUCCESS; // Dont kill the task
+//
+//
+//    CALL(uart.write(buffer, 1000));
 
     RESET();
     return RET_SUCCESS;
@@ -335,7 +354,7 @@ RetType device_init() {
         }
 #else
 #endif
-        sched_start(rfm9xw_tx_task, {});
+        sched_start(rfmTxTask, {});
     }
 
     RESET();
@@ -380,10 +399,9 @@ RetType network_init() {
     sched_start(pollWiznet, {});
 
     netStackInitDone:
-    RESET();
+RESET();
     return RET_ERROR; // Kill task
 }
-
 
 
 RetType init_task(void *) {
@@ -404,12 +422,12 @@ RetType init_task(void *) {
 int main(void) {
     /* USER CODE BEGIN 1 */
     constexpr auto launch_name_text = "\t ________  ___  _________        ___       ________  ___  ___  ________   ________  ___  ___\r\n"
-                                                "\t|\\   __  \\|\\  \\|\\___   ___\\     |\\  \\     |\\   __  \\|\\  \\|\\  \\|\\   ___  \\|\\   ____\\|\\  \\|\\  \\\r\n"
-                                                "\t\\ \\  \\|\\  \\ \\  \\|___ \\  \\_|     \\ \\  \\    \\ \\  \\|\\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\___|\\ \\  \\\\\\  \\\r\n"
-                                                "\t \\ \\   _  _\\ \\  \\   \\ \\  \\       \\ \\  \\    \\ \\   __  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\    \\ \\   __  \\\r\n"
-                                                "\t  \\ \\  \\\\  \\\\ \\  \\   \\ \\  \\       \\ \\  \\____\\ \\  \\ \\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\____\\ \\  \\ \\  \\\r\n"
-                                                "\t   \\ \\__\\\\ _\\\\ \\__\\   \\ \\__\\       \\ \\_______\\ \\__\\ \\__\\ \\_______\\ \\__\\\\ \\__\\ \\_______\\ \\__\\ \\__\\\r\n"
-                                                "\t    \\|__|\\|__|\\|__|    \\|__|        \\|_______|\\|__|\\|__|\\|_______|\\|__| \\|__|\\|_______|\\|__|\\|__|\r\n";
+                                      "\t|\\   __  \\|\\  \\|\\___   ___\\     |\\  \\     |\\   __  \\|\\  \\|\\  \\|\\   ___  \\|\\   ____\\|\\  \\|\\  \\\r\n"
+                                      "\t\\ \\  \\|\\  \\ \\  \\|___ \\  \\_|     \\ \\  \\    \\ \\  \\|\\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\___|\\ \\  \\\\\\  \\\r\n"
+                                      "\t \\ \\   _  _\\ \\  \\   \\ \\  \\       \\ \\  \\    \\ \\   __  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\    \\ \\   __  \\\r\n"
+                                      "\t  \\ \\  \\\\  \\\\ \\  \\   \\ \\  \\       \\ \\  \\____\\ \\  \\ \\  \\ \\  \\\\\\  \\ \\  \\\\ \\  \\ \\  \\____\\ \\  \\ \\  \\\r\n"
+                                      "\t   \\ \\__\\\\ _\\\\ \\__\\   \\ \\__\\       \\ \\_______\\ \\__\\ \\__\\ \\_______\\ \\__\\\\ \\__\\ \\_______\\ \\__\\ \\__\\\r\n"
+                                      "\t    \\|__|\\|__|\\|__|    \\|__|        \\|_______|\\|__|\\|__|\\|_______|\\|__| \\|__|\\|_______|\\|__|\\|__|\r\n";
 
     constexpr int launch_name_len = []() constexpr {
         const char *ptr = launch_name_text;
@@ -418,12 +436,12 @@ int main(void) {
     }();
 
     constexpr auto radio_module_text = " ________  ________  ________  ___  ________          _____ ______   ________  ________  ___  ___  ___       _______\r\n"
-                                                "|\\   __  \\|\\   __  \\|\\   ___ \\|\\  \\|\\   __  \\        |\\   _ \\  _   \\|\\   __  \\|\\   ___ \\|\\  \\|\\  \\|\\  \\     |\\  ___ \\\r\n"
-                                                "\\ \\  \\|\\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\ \\  \\|\\  \\       \\ \\  \\\\\\__\\ \\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\   __/|\r\n"
-                                                " \\ \\   _  _\\ \\   __  \\ \\  \\ \\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\\\|__| \\  \\ \\  \\\\\\  \\ \\  \\ \\\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\  \\_|/__\r\n"
-                                                "  \\ \\  \\\\  \\\\ \\  \\ \\  \\ \\  \\_\\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\    \\ \\  \\ \\  \\\\\\  \\ \\  \\_\\\\ \\ \\  \\\\\\  \\ \\  \\____\\ \\  \\_|\\ \\\r\n"
-                                                "   \\ \\__\\\\ _\\\\ \\__\\ \\__\\ \\_______\\ \\__\\ \\_______\\       \\ \\__\\    \\ \\__\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\\r\n"
-                                                "    \\|__|\\|__|\\|__|\\|__|\\|_______|\\|__|\\|_______|        \\|__|     \\|__|\\|_______|\\|_______|\\|_______|\\|_______|\\|_______|\r\n";
+                                       "|\\   __  \\|\\   __  \\|\\   ___ \\|\\  \\|\\   __  \\        |\\   _ \\  _   \\|\\   __  \\|\\   ___ \\|\\  \\|\\  \\|\\  \\     |\\  ___ \\\r\n"
+                                       "\\ \\  \\|\\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\ \\  \\|\\  \\       \\ \\  \\\\\\__\\ \\  \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\   __/|\r\n"
+                                       " \\ \\   _  _\\ \\   __  \\ \\  \\ \\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\\\|__| \\  \\ \\  \\\\\\  \\ \\  \\ \\\\ \\ \\  \\\\\\  \\ \\  \\    \\ \\  \\_|/__\r\n"
+                                       "  \\ \\  \\\\  \\\\ \\  \\ \\  \\ \\  \\_\\\\ \\ \\  \\ \\  \\\\\\  \\       \\ \\  \\    \\ \\  \\ \\  \\\\\\  \\ \\  \\_\\\\ \\ \\  \\\\\\  \\ \\  \\____\\ \\  \\_|\\ \\\r\n"
+                                       "   \\ \\__\\\\ _\\\\ \\__\\ \\__\\ \\_______\\ \\__\\ \\_______\\       \\ \\__\\    \\ \\__\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\\r\n"
+                                       "    \\|__|\\|__|\\|__|\\|__|\\|_______|\\|__|\\|_______|        \\|__|     \\|__|\\|_______|\\|_______|\\|_______|\\|_______|\\|_______|\r\n";
 
     constexpr int radio_module_len = []() constexpr {
         const char *ptr = radio_module_text;
@@ -432,8 +450,8 @@ int main(void) {
     }();
 
     constexpr auto line_text = " ____________  ____________  ____________  ____________  ____________  ____________  ____________  ____________  ____________\r\n"
-                                            "|\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\r\n"
-                                            "\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________|\r\n";
+                               "|\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\\____________\\\r\n"
+                               "\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________\\|____________|\r\n";
 
     constexpr int line_text_len = []() constexpr {
         const char *ptr = line_text;
@@ -503,7 +521,7 @@ void SystemClock_Config(void) {
     /** Configure the main internal regulator output voltage
     */
     __HAL_RCC_PWR_CLK_ENABLE();
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
     /** Initializes the RCC Oscillators according to the specified parameters
     * in the RCC_OscInitTypeDef structure.
@@ -511,20 +529,8 @@ void SystemClock_Config(void) {
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
     RCC_OscInitStruct.HSIState = RCC_HSI_ON;
     RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-    RCC_OscInitStruct.PLL.PLLM = 8;
-    RCC_OscInitStruct.PLL.PLLN = 180;
-    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-    RCC_OscInitStruct.PLL.PLLQ = 2;
-    RCC_OscInitStruct.PLL.PLLR = 2;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-        Error_Handler();
-    }
-
-    /** Activate the Over-Drive mode
-    */
-    if (HAL_PWREx_EnableOverDrive() != HAL_OK) {
         Error_Handler();
     }
 
@@ -532,12 +538,12 @@ void SystemClock_Config(void) {
     */
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
                                   | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK) {
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
         Error_Handler();
     }
 }
