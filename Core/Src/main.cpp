@@ -262,11 +262,35 @@ RetType maxm10sTask(void *) {
                                                                         "\tSeconds since midnight: %f\r\n",
                                               gps_data.latitude, gps_data.longitude, gps_data.alt, gps_data.num_sats,
                                               gps_data.quality, gps_data.time);
-                CALL(uart.write(uart_buff, len2));
+                RetType ret = CALL(uart.write(uart_buff, len2));
+                if (RET_SUCCESS != ret) {
+                    RESET();
+                    return RET_ERROR;
+                }
+
+
                 break;
             }
         }
+
     }
+
+    RESET();
+    return RET_SUCCESS;
+}
+
+RetType rfmRxTask(void *) {
+    RESUME();
+
+    static uint8_t buffer[1000] = {0};
+    RetType ret = CALL(rfm9xw.receive_data(buffer, 1000));
+    if (RET_SUCCESS != ret) {
+        CALL(uart.write((uint8_t *) "Receive error!\r\n", 16));
+        RESET();
+        return RET_SUCCESS; // Dont kill the task
+
+
+    CALL(uart.write(buffer, 1000));
 
     RESET();
     return RET_SUCCESS;
