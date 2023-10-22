@@ -251,9 +251,11 @@ RetType rfmTxTask(void *) {
     RESUME();
 
     static uint8_t data[] = "Launch!";
-    RetType ret = CALL(rfm9xw.transmit_data(data, 7));
+    RetType ret = CALL(rfm9xw.send_data(data, 7));
     if (RET_SUCCESS == ret) {
-        CALL(led_two.set_state(LED_ON));
+//        CALL(led_two.set_state(LED_ON));
+        CALL(led_two.toggle());
+        SLEEP(100);
         CALL(uart.write(data, 7));
     } else {
         CALL(led_two.set_state(LED_OFF));
